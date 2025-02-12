@@ -34,6 +34,7 @@
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
         camera.position.set(0, 1.6, 5);
 
+        // Caricamento HDR
         const rgbeLoader = new RGBELoader();
         rgbeLoader.setPath("./assets/hdris/").load("outdoor2.hdr", (texture) => {
             texture.mapping = THREE.EquirectangularReflectionMapping;
@@ -41,6 +42,7 @@
             scene.background = texture;
         });
 
+        // Caricamento modelli GLTF
         const gltfLoader = new GLTFLoader();
         let floorMesh = null;
 
@@ -48,19 +50,19 @@
             gltfLoader.setPath(path).load(fileName, (gltf) => {
                 const model = gltf.scene;
                 scene.add(model);
-                
                 if (fileName === "Pavimento.glb") {
                     floorMesh = model;
                 }
             });
         }
 
-        // Caricamento modelli
+        // Modelli da caricare
         loadModel("./assets/", "Pavimento.glb");
         loadModel("./assets/", "Pareti.glb");
-        
-        
+        loadModel("./assets/", "Divano salotto.glb");
+        loadModel("./assets/", "Finestre.glb");
 
+        // Variabili per movimento e rotazione
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
         let targetPosition = new THREE.Vector3();
@@ -71,8 +73,9 @@
         let pitch = 0;
         let previousMousePosition = { x: 0, y: 0 };
 
+        // Eventi mouse
         function onMouseDown(event) {
-            if (event.button === 0) { // Tasto sinistro
+            if (event.button === 0) {
                 mousePressed = true;
                 isDragging = false;
                 previousMousePosition.x = event.clientX;
@@ -86,19 +89,12 @@
             const deltaX = event.clientX - previousMousePosition.x;
             const deltaY = event.clientY - previousMousePosition.y;
 
-            if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) {
-                isDragging = true; // Se il mouse si muove abbastanza, attiva il drag
-            }
+            if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) isDragging = true;
 
             if (isDragging) {
-                // Ruota la camera
                 yaw -= deltaX * 0.002;
                 pitch -= deltaY * 0.002;
-
-                // Limita la rotazione verticale
                 pitch = Math.max(-Math.PI / 4, Math.min(Math.PI / 4, pitch));
-
-                // Imposta la rotazione della camera senza tilt
                 camera.quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, "YXZ"));
             }
 
@@ -109,14 +105,46 @@
         function onMouseUp(event) {
             if (event.button === 0) {
                 mousePressed = false;
-
-                // Se il mouse non è stato trascinato, allora è un click semplice
-                if (!isDragging) {
-                    moveToClick(event);
-                }
+                if (!isDragging) moveToClick(event);
             }
         }
 
+        // Eventi touch per dispositivi mobili
+        function onTouchStart(event) {
+            if (event.touches.length === 1) {
+                mousePressed = true;
+                isDragging = false;
+                previousMousePosition.x = event.touches[0].clientX;
+                previousMousePosition.y = event.touches[0].clientY;
+            }
+        }
+
+        function onTouchMove(event) {
+            if (!mousePressed || event.touches.length !== 1) return;
+
+            const touch = event.touches[0];
+            const deltaX = touch.clientX - previousMousePosition.x;
+            const deltaY = touch.clientY - previousMousePosition.y;
+
+            if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) isDragging = true;
+
+            if (isDragging) {
+                yaw -= deltaX * 0.002;
+                pitch -= deltaY * 0.002;
+                pitch = Math.max(-Math.PI / 4, Math.min(Math.PI / 4, pitch));
+                camera.quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, "YXZ"));
+            }
+
+            previousMousePosition.x = touch.clientX;
+            previousMousePosition.y = touch.clientY;
+        }
+
+        function onTouchEnd(event) {
+            mousePressed = false;
+            if (!isDragging) moveToClick(event.changedTouches[0]);
+        }
+
+        // Movimento verso il punto cliccato/toccato
         function moveToClick(event) {
             if (!floorMesh) return;
 
@@ -128,30 +156,31 @@
 
             if (intersects.length > 0) {
                 const point = intersects[0].point;
-
-                // Direzione di movimento
                 const moveDirection = new THREE.Vector3().subVectors(point, camera.position).setY(0).normalize();
-                
-                // Imposta la posizione target
                 targetPosition.copy(camera.position).addScaledVector(moveDirection, camera.position.distanceTo(point));
-
                 isMoving = true;
             }
         }
 
+        // Event listeners
         window.addEventListener("mousedown", onMouseDown);
         window.addEventListener("mousemove", onMouseMove);
         window.addEventListener("mouseup", onMouseUp);
+
+        window.addEventListener("touchstart", onTouchStart, { passive: false });
+        window.addEventListener("touchmove", onTouchMove, { passive: false });
+        window.addEventListener("touchend", onTouchEnd);
+
         window.addEventListener("resize", () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
+        // Animazione
         function animate() {
             requestAnimationFrame(animate);
-            
-            // Movimento fluido della camera
+
             if (isMoving) {
                 camera.position.lerp(targetPosition, 0.1);
                 if (camera.position.distanceTo(targetPosition) < 0.1) {
