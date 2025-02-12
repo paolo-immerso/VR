@@ -3,22 +3,172 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Three.js - Sfera di Vetro</title>
-    <style>
-        body { margin: 0; overflow: hidden; }
-        canvas { display: block; }
-    </style>
+    <title>Three.js - Modello Interattivo</title>
     <script type="importmap">
         {
             "imports": {
                 "three": "https://cdn.jsdelivr.net/npm/three@latest/build/three.module.js",
-                "three/examples/jsm/controls/OrbitControls": "https://cdn.jsdelivr.net/npm/three@latest/examples/jsm/controls/OrbitControls.js",
-                "three/examples/jsm/loaders/RGBELoader": "https://cdn.jsdelivr.net/npm/three@latest/examples/jsm/loaders/RGBELoader.js"
+                "three/examples/jsm/loaders/RGBELoader": "https://cdn.jsdelivr.net/npm/three@latest/examples/jsm/loaders/RGBELoader.js",
+                "three/examples/jsm/loaders/GLTFLoader": "https://cdn.jsdelivr.net/npm/three@latest/examples/jsm/loaders/GLTFLoader.js"
             }
         }
     </script>
+    <style>
+        body { margin: 0; overflow: hidden; cursor: crosshair; }
+    </style>
 </head>
 <body>
-    <script type="module" src="main.js"></script>
+    <script type="module">
+        import * as THREE from "three";
+        import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader";
+        import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
+
+        const scene = new THREE.Scene();
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1;
+        document.body.appendChild(renderer.domElement);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(0, 1.6, 5);
+
+        const rgbeLoader = new RGBELoader();
+        rgbeLoader.setPath("./assets/hdris/").load("outdoor2.hdr", (texture) => {
+            texture.mapping = THREE.EquirectangularReflectionMapping;
+            scene.environment = texture;
+            scene.background = texture;
+        });
+
+        const gltfLoader = new GLTFLoader();
+        let floorMesh = null;
+
+        function loadModel(path, fileName) {
+            gltfLoader.setPath(path).load(fileName, (gltf) => {
+                const model = gltf.scene;
+                scene.add(model);
+                
+                if (fileName === "pavimento.glb") {
+                    floorMesh = model;
+                }
+            });
+        }
+
+        // Caricamento modelli
+        loadModel("./assets/", "pavimento.glb");
+        loadModel("./assets/", "pareti.glb");
+        loadModel("./assets/", "Arredi 1.glb");
+        loadModel("./assets/", "Arredi 2.glb");
+        loadModel("./assets/", "Arredi 3.glb");
+        loadModel("./assets/", "divano salotto.glb");
+        loadModel("./assets/", "Lampadario salotto.glb");
+        loadModel("./assets/", "Poltrone gialle salotto.glb");
+        loadModel("./assets/", "Porte_cornici e battiscopa.glb");
+        loadModel("./assets/", "Sedie tavolo da pranzo.glb");
+        loadModel("./assets/", "Soffitto.glb");
+
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        let targetPosition = new THREE.Vector3();
+        let isMoving = false;
+        let isDragging = false;
+        let mousePressed = false;
+        let yaw = 0;
+        let pitch = 0;
+        let previousMousePosition = { x: 0, y: 0 };
+
+        function onMouseDown(event) {
+            if (event.button === 0) { // Tasto sinistro
+                mousePressed = true;
+                isDragging = false;
+                previousMousePosition.x = event.clientX;
+                previousMousePosition.y = event.clientY;
+            }
+        }
+
+        function onMouseMove(event) {
+            if (!mousePressed) return;
+
+            const deltaX = event.clientX - previousMousePosition.x;
+            const deltaY = event.clientY - previousMousePosition.y;
+
+            if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) {
+                isDragging = true; // Se il mouse si muove abbastanza, attiva il drag
+            }
+
+            if (isDragging) {
+                // Ruota la camera
+                yaw -= deltaX * 0.002;
+                pitch -= deltaY * 0.002;
+
+                // Limita la rotazione verticale
+                pitch = Math.max(-Math.PI / 4, Math.min(Math.PI / 4, pitch));
+
+                // Imposta la rotazione della camera senza tilt
+                camera.quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, "YXZ"));
+            }
+
+            previousMousePosition.x = event.clientX;
+            previousMousePosition.y = event.clientY;
+        }
+
+        function onMouseUp(event) {
+            if (event.button === 0) {
+                mousePressed = false;
+
+                // Se il mouse non è stato trascinato, allora è un click semplice
+                if (!isDragging) {
+                    moveToClick(event);
+                }
+            }
+        }
+
+        function moveToClick(event) {
+            if (!floorMesh) return;
+
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObject(floorMesh, true);
+
+            if (intersects.length > 0) {
+                const point = intersects[0].point;
+
+                // Direzione di movimento
+                const moveDirection = new THREE.Vector3().subVectors(point, camera.position).setY(0).normalize();
+                
+                // Imposta la posizione target
+                targetPosition.copy(camera.position).addScaledVector(moveDirection, camera.position.distanceTo(point));
+
+                isMoving = true;
+            }
+        }
+
+        window.addEventListener("mousedown", onMouseDown);
+        window.addEventListener("mousemove", onMouseMove);
+        window.addEventListener("mouseup", onMouseUp);
+        window.addEventListener("resize", () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Movimento fluido della camera
+            if (isMoving) {
+                camera.position.lerp(targetPosition, 0.1);
+                if (camera.position.distanceTo(targetPosition) < 0.1) {
+                    isMoving = false;
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+        animate();
+    </script>
 </body>
 </html>
