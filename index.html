@@ -10,9 +10,7 @@
                 "three": "https://cdn.jsdelivr.net/npm/three@latest/build/three.module.js",
                 "three/examples/jsm/loaders/RGBELoader": "https://cdn.jsdelivr.net/npm/three@latest/examples/jsm/loaders/RGBELoader.js",
                 "three/examples/jsm/loaders/GLTFLoader": "https://cdn.jsdelivr.net/npm/three@latest/examples/jsm/loaders/GLTFLoader.js",
-                "three/examples/jsm/webxr/VRButton": "https://cdn.jsdelivr.net/npm/three@latest/examples/jsm/webxr/VRButton.js",
-                "three/examples/jsm/webxr/XRControllerModelFactory": "https://cdn.jsdelivr.net/npm/three@latest/examples/jsm/webxr/XRControllerModelFactory.js",
-                "three/examples/jsm/webxr/XRHandModelFactory": "https://cdn.jsdelivr.net/npm/three@latest/examples/jsm/webxr/XRHandModelFactory.js"
+                "three/examples/jsm/webxr/VRButton": "https://cdn.jsdelivr.net/npm/three@latest/examples/jsm/webxr/VRButton.js"
             }
         }
     </script>
@@ -26,8 +24,6 @@
     import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader";
     import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
     import { VRButton } from "three/examples/jsm/webxr/VRButton";
-    import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory";
-    import { XRHandModelFactory } from "three/examples/jsm/webxr/XRHandModelFactory";
 
     const scene = new THREE.Scene();
     const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -80,48 +76,7 @@
     // Abilita WebXR
     renderer.xr.enabled = true;
 
-    // CONTROLLER VR
-    const controller1 = renderer.xr.getController(0);
-    const controller2 = renderer.xr.getController(1);
-    scene.add(controller1);
-    scene.add(controller2);
-
-    const controllerModelFactory = new XRControllerModelFactory();
-    const handModelFactory = new XRHandModelFactory();
-
-    const controllerGrip1 = renderer.xr.getControllerGrip(0);
-    controllerGrip1.add(controllerModelFactory.createControllerModel(controllerGrip1));
-    scene.add(controllerGrip1);
-
-    const controllerGrip2 = renderer.xr.getControllerGrip(1);
-    controllerGrip2.add(controllerModelFactory.createControllerModel(controllerGrip2));
-    scene.add(controllerGrip2);
-
-    // TELETRASPORTO
-    const teleportRaycaster = new THREE.Raycaster();
-    const teleportTarget = new THREE.Vector3();
-
-    function attemptTeleport(controller) {
-        if (!floorMesh) return;
-
-        const tempMatrix = new THREE.Matrix4();
-        tempMatrix.identity().extractRotation(controller.matrixWorld);
-
-        const direction = new THREE.Vector3(0, 0, -1).applyMatrix4(tempMatrix);
-        teleportRaycaster.set(controller.position, direction);
-
-        const intersects = teleportRaycaster.intersectObject(floorMesh, true);
-        if (intersects.length > 0) {
-            teleportTarget.copy(intersects[0].point);
-            teleportTarget.y += 1.6;
-            camera.position.set(teleportTarget.x, teleportTarget.y, teleportTarget.z);
-        }
-    }
-
-    controller1.addEventListener("selectstart", () => attemptTeleport(controller1));
-    controller2.addEventListener("selectstart", () => attemptTeleport(controller2));
-
-    // Movimento e rotazione con mouse/touch
+    // Variabili per movimento e rotazione
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
     let targetPosition = new THREE.Vector3();
@@ -132,6 +87,7 @@
     let pitch = 0;
     let previousMousePosition = { x: 0, y: 0 };
 
+    // Eventi mouse
     function onMouseDown(event) {
         if (event.button === 0 && !renderer.xr.isPresenting) {
             mousePressed = true;
@@ -143,26 +99,93 @@
 
     function onMouseMove(event) {
         if (!mousePressed || renderer.xr.isPresenting) return;
+
         const deltaX = event.clientX - previousMousePosition.x;
         const deltaY = event.clientY - previousMousePosition.y;
+
         if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) isDragging = true;
+
         if (isDragging) {
             yaw -= deltaX * 0.002;
             pitch -= deltaY * 0.002;
             pitch = Math.max(-Math.PI / 4, Math.min(Math.PI / 4, pitch));
             camera.quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, "YXZ"));
         }
+
         previousMousePosition.x = event.clientX;
         previousMousePosition.y = event.clientY;
     }
 
-    function onMouseUp() {
-        mousePressed = false;
+    function onMouseUp(event) {
+        if (event.button === 0 && !renderer.xr.isPresenting) {
+            mousePressed = false;
+            if (!isDragging) moveToClick(event);
+        }
     }
 
+    // Eventi touch per dispositivi mobili
+    function onTouchStart(event) {
+        if (event.touches.length === 1 && !renderer.xr.isPresenting) {
+            mousePressed = true;
+            isDragging = false;
+            previousMousePosition.x = event.touches[0].clientX;
+            previousMousePosition.y = event.touches[0].clientY;
+        }
+    }
+
+    function onTouchMove(event) {
+        if (!mousePressed || event.touches.length !== 1 || renderer.xr.isPresenting) return;
+
+        const touch = event.touches[0];
+        const deltaX = touch.clientX - previousMousePosition.x;
+        const deltaY = touch.clientY - previousMousePosition.y;
+
+        if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) isDragging = true;
+
+        if (isDragging) {
+            yaw -= deltaX * 0.002;
+            pitch -= deltaY * 0.002;
+            pitch = Math.max(-Math.PI / 4, Math.min(Math.PI / 4, pitch));
+            camera.quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, "YXZ"));
+        }
+
+        previousMousePosition.x = touch.clientX;
+        previousMousePosition.y = touch.clientY;
+    }
+
+    function onTouchEnd(event) {
+        if (!renderer.xr.isPresenting) {
+            mousePressed = false;
+            if (!isDragging) moveToClick(event.changedTouches[0]);
+        }
+    }
+
+    // Movimento verso il punto cliccato/toccato
+    function moveToClick(event) {
+        if (!floorMesh || renderer.xr.isPresenting) return;
+
+        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObject(floorMesh, true);
+
+        if (intersects.length > 0) {
+            const point = intersects[0].point;
+            const moveDirection = new THREE.Vector3().subVectors(point, camera.position).setY(0).normalize();
+            targetPosition.copy(camera.position).addScaledVector(moveDirection, camera.position.distanceTo(point));
+            isMoving = true;
+        }
+    }
+
+    // Event listeners
     window.addEventListener("mousedown", onMouseDown);
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
+
+    window.addEventListener("touchstart", onTouchStart, { passive: false });
+    window.addEventListener("touchmove", onTouchMove, { passive: false });
+    window.addEventListener("touchend", onTouchEnd);
 
     window.addEventListener("resize", () => {
         camera.aspect = window.innerWidth / window.innerHeight;
@@ -170,8 +193,17 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
+    // Animazione
     function animate() {
         requestAnimationFrame(animate);
+
+        if (isMoving && !renderer.xr.isPresenting) {
+            camera.position.lerp(targetPosition, 0.1);
+            if (camera.position.distanceTo(targetPosition) < 0.1) {
+                isMoving = false;
+            }
+        }
+
         renderer.render(scene, camera);
     }
     animate();
