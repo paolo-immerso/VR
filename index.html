@@ -75,16 +75,6 @@
 
         // Abilita WebXR
         renderer.xr.enabled = true;
-        renderer.xr.setReferenceSpaceType('local-floor');
-
-        // Gestione della sessione WebXR
-        renderer.xr.addEventListener('sessionstart', () => {
-            console.log('Sessione VR iniziata');
-        });
-
-        renderer.xr.addEventListener('sessionend', () => {
-            console.log('Sessione VR terminata');
-        });
 
         // Variabili per movimento e rotazione
         const raycaster = new THREE.Raycaster();
@@ -99,7 +89,7 @@
 
         // Eventi mouse
         function onMouseDown(event) {
-            if (event.button === 0) {
+            if (event.button === 0 && !renderer.xr.isPresenting) {
                 mousePressed = true;
                 isDragging = false;
                 previousMousePosition.x = event.clientX;
@@ -108,7 +98,7 @@
         }
 
         function onMouseMove(event) {
-            if (!mousePressed) return;
+            if (!mousePressed || renderer.xr.isPresenting) return;
 
             const deltaX = event.clientX - previousMousePosition.x;
             const deltaY = event.clientY - previousMousePosition.y;
@@ -127,7 +117,7 @@
         }
 
         function onMouseUp(event) {
-            if (event.button === 0) {
+            if (event.button === 0 && !renderer.xr.isPresenting) {
                 mousePressed = false;
                 if (!isDragging) moveToClick(event);
             }
@@ -135,7 +125,7 @@
 
         // Eventi touch per dispositivi mobili
         function onTouchStart(event) {
-            if (event.touches.length === 1) {
+            if (event.touches.length === 1 && !renderer.xr.isPresenting) {
                 mousePressed = true;
                 isDragging = false;
                 previousMousePosition.x = event.touches[0].clientX;
@@ -144,7 +134,7 @@
         }
 
         function onTouchMove(event) {
-            if (!mousePressed || event.touches.length !== 1) return;
+            if (!mousePressed || event.touches.length !== 1 || renderer.xr.isPresenting) return;
 
             const touch = event.touches[0];
             const deltaX = touch.clientX - previousMousePosition.x;
@@ -164,13 +154,15 @@
         }
 
         function onTouchEnd(event) {
-            mousePressed = false;
-            if (!isDragging) moveToClick(event.changedTouches[0]);
+            if (!renderer.xr.isPresenting) {
+                mousePressed = false;
+                if (!isDragging) moveToClick(event.changedTouches[0]);
+            }
         }
 
         // Movimento verso il punto cliccato/toccato
         function moveToClick(event) {
-            if (!floorMesh) return;
+            if (!floorMesh || renderer.xr.isPresenting) return;
 
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
@@ -205,7 +197,7 @@
         function animate() {
             requestAnimationFrame(animate);
 
-            if (isMoving) {
+            if (isMoving && !renderer.xr.isPresenting) {
                 camera.position.lerp(targetPosition, 0.1);
                 if (camera.position.distanceTo(targetPosition) < 0.1) {
                     isMoving = false;
@@ -214,8 +206,7 @@
 
             renderer.render(scene, camera);
         }
-
-        renderer.setAnimationLoop(animate);
+        animate();
     </script>
 </body>
 </html>
