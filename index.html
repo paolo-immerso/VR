@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Three.js - Modello Interattivo con Teletrasporto</title>
+    <title>Three.js - Modello Interattivo</title>
     <script type="importmap">
         {
             "imports": {
@@ -33,17 +33,18 @@
         renderer.shadowMap.enabled = true;
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
         renderer.toneMappingExposure = 1;
-        renderer.xr.enabled = true;  
+        renderer.xr.enabled = true;  // Abilita WebXR
         document.body.appendChild(renderer.domElement);
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
         camera.position.set(0, 1.6, 5);
 
-        // Aggiunta pulsante VR
+        // Aggiungi il pulsante VR
         document.body.appendChild(VRButton.createButton(renderer));
 
         // Caricamento HDR
-        new RGBELoader().setPath("./assets/hdris/").load("outdoor2.hdr", (texture) => {
+        const rgbeLoader = new RGBELoader();
+        rgbeLoader.setPath("./assets/hdris/").load("outdoor2.hdr", (texture) => {
             texture.mapping = THREE.EquirectangularReflectionMapping;
             scene.environment = texture;
             scene.background = texture;
@@ -63,7 +64,7 @@
             });
         }
 
-        // Carica i modelli
+        // Modelli da caricare
         loadModel("./assets/", "Pavimento.glb");
         loadModel("./assets/", "Pareti.glb");
         loadModel("./assets/", "Divano salotto.glb");
@@ -75,54 +76,131 @@
         loadModel("./assets/", "Sedie tavolo da pranzo.glb");
         loadModel("./assets/", "Soffitto.glb");
 
-        // Teletrasporto
-        const teleportMarker = new THREE.Mesh(
-            new THREE.SphereGeometry(0.1, 16, 16),
-            new THREE.MeshBasicMaterial({ color: 0xff0000, visible: false })
-        );
-        scene.add(teleportMarker);
+        // Variabili per movimento e rotazione
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        let targetPosition = new THREE.Vector3();
+        let isMoving = false;
+        let isDragging = false;
+        let mousePressed = false;
+        let yaw = 0;
+        let pitch = 0;
+        let previousMousePosition = { x: 0, y: 0 };
 
-        function getTeleportIntersection(controller) {
-            if (!floorMesh) return null;
-
-            const tempMatrix = new THREE.Matrix4();
-            tempMatrix.identity().extractRotation(controller.matrixWorld);
-
-            const ray = new THREE.Raycaster();
-            ray.ray.origin.setFromMatrixPosition(controller.matrixWorld);
-            ray.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
-
-            const intersects = ray.intersectObject(floorMesh, true);
-            return intersects.length > 0 ? intersects[0] : null;
-        }
-
-        function updateTeleportMarker(controller) {
-            const intersection = getTeleportIntersection(controller);
-            if (intersection) {
-                teleportMarker.position.copy(intersection.point);
-                teleportMarker.visible = true;
-            } else {
-                teleportMarker.visible = false;
+        // Eventi mouse
+        function onMouseDown(event) {
+            if (event.button === 0 && !renderer.xr.isPresenting) {
+                mousePressed = true;
+                isDragging = false;
+                previousMousePosition.x = event.clientX;
+                previousMousePosition.y = event.clientY;
             }
         }
 
-        function onSelectStart(event) {
-            const controller = event.target;
-            const intersection = getTeleportIntersection(controller);
+        function onMouseMove(event) {
+            if (!mousePressed || renderer.xr.isPresenting) return;
 
-            if (intersection) {
-                camera.position.set(intersection.point.x, camera.position.y, intersection.point.z);
-                teleportMarker.visible = false;
+            const deltaX = event.clientX - previousMousePosition.x;
+            const deltaY = event.clientY - previousMousePosition.y;
+
+            if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) isDragging = true;
+
+            if (isDragging) {
+                yaw -= deltaX * 0.002;
+                pitch -= deltaY * 0.002;
+                pitch = Math.max(-Math.PI / 4, Math.min(Math.PI / 4, pitch));
+                camera.quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, "YXZ"));
+            }
+
+            previousMousePosition.x = event.clientX;
+            previousMousePosition.y = event.clientY;
+        }
+
+        function onMouseUp(event) {
+            if (event.button === 0 && !renderer.xr.isPresenting) {
+                mousePressed = false;
+                if (!isDragging) moveToClick(event);
             }
         }
 
-        // Configurazione controller VR
+        // Eventi touch per dispositivi mobili
+        function onTouchStart(event) {
+            if (event.touches.length === 1 && !renderer.xr.isPresenting) {
+                mousePressed = true;
+                isDragging = false;
+                previousMousePosition.x = event.touches[0].clientX;
+                previousMousePosition.y = event.touches[0].clientY;
+            }
+        }
+
+        function onTouchMove(event) {
+            if (!mousePressed || event.touches.length !== 1 || renderer.xr.isPresenting) return;
+
+            const touch = event.touches[0];
+            const deltaX = touch.clientX - previousMousePosition.x;
+            const deltaY = touch.clientY - previousMousePosition.y;
+
+            if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) isDragging = true;
+
+            if (isDragging) {
+                yaw -= deltaX * 0.002;
+                pitch -= deltaY * 0.002;
+                pitch = Math.max(-Math.PI / 4, Math.min(Math.PI / 4, pitch));
+                camera.quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, "YXZ"));
+            }
+
+            previousMousePosition.x = touch.clientX;
+            previousMousePosition.y = touch.clientY;
+        }
+
+        function onTouchEnd(event) {
+            if (!renderer.xr.isPresenting) {
+                mousePressed = false;
+                if (!isDragging) moveToClick(event.changedTouches[0]);
+            }
+        }
+
+        // Movimento verso il punto cliccato/toccato
+        function moveToClick(event) {
+            if (!floorMesh || renderer.xr.isPresenting) return;
+
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObject(floorMesh, true);
+
+            if (intersects.length > 0) {
+                const point = intersects[0].point;
+                const moveDirection = new THREE.Vector3().subVectors(point, camera.position).setY(0).normalize();
+                targetPosition.copy(camera.position).addScaledVector(moveDirection, camera.position.distanceTo(point));
+                isMoving = true;
+            }
+        }
+
+        // Event listeners
+        window.addEventListener("mousedown", onMouseDown);
+        window.addEventListener("mousemove", onMouseMove);
+        window.addEventListener("mouseup", onMouseUp);
+
+        window.addEventListener("touchstart", onTouchStart, { passive: false });
+        window.addEventListener("touchmove", onTouchMove, { passive: false });
+        window.addEventListener("touchend", onTouchEnd);
+
+        window.addEventListener("resize", () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Configurazione VR e controller
         const controllerModelFactory = new XRControllerModelFactory();
         let controller1, controller2;
 
         function setupXRControllers() {
             controller1 = renderer.xr.getController(0);
             controller1.addEventListener("selectstart", onSelectStart);
+            controller1.addEventListener("selectend", onSelectEnd);
             scene.add(controller1);
 
             const grip1 = renderer.xr.getControllerGrip(0);
@@ -131,6 +209,7 @@
 
             controller2 = renderer.xr.getController(1);
             controller2.addEventListener("selectstart", onSelectStart);
+            controller2.addEventListener("selectend", onSelectEnd);
             scene.add(controller2);
 
             const grip2 = renderer.xr.getControllerGrip(1);
@@ -138,20 +217,54 @@
             scene.add(grip2);
         }
 
-        renderer.xr.addEventListener("sessionstart", setupXRControllers);
+        // Teletrasporto in VR
+        function onSelectStart(event) {
+            const controller = event.target;
+            const intersections = getIntersections(controller);
 
-        window.addEventListener("resize", () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
+            if (intersections.length > 0) {
+                const point = intersections[0].point;
+                camera.position.set(point.x, camera.position.y, point.z);
+            }
+        }
+
+        function onSelectEnd(event) {
+            // Puoi aggiungere ulteriori azioni qui se necessario
+        }
+
+        function getIntersections(controller) {
+            const tempMatrix = new THREE.Matrix4();
+            tempMatrix.identity().extractRotation(controller.matrixWorld);
+
+            const ray = new THREE.Raycaster();
+            ray.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+            ray.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+
+            return ray.intersectObject(floorMesh, true);
+        }
+
+        // Animazione
+        function animate() {
+            renderer.setAnimationLoop(() => {
+                if (isMoving && !renderer.xr.isPresenting) {
+                    camera.position.lerp(targetPosition, 0.1);
+                    if (camera.position.distanceTo(targetPosition) < 0.1) {
+                        isMoving = false;
+                    }
+                }
+
+                renderer.render(scene, camera);
+            });
+        }
+
+        // Inizializzazione VR
+        renderer.xr.addEventListener("sessionstart", () => {
+            setupXRControllers();
         });
 
-        renderer.setAnimationLoop(() => {
-            if (controller1) updateTeleportMarker(controller1);
-            if (controller2) updateTeleportMarker(controller2);
+        
 
-            renderer.render(scene, camera);
-        });
+        animate();
     </script>
 </body>
 </html>
