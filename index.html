@@ -75,6 +75,16 @@
 
         // Abilita WebXR
         renderer.xr.enabled = true;
+        renderer.xr.setReferenceSpaceType('local-floor');
+
+        // Gestione della sessione WebXR
+        renderer.xr.addEventListener('sessionstart', () => {
+            console.log('Sessione VR iniziata');
+        });
+
+        renderer.xr.addEventListener('sessionend', () => {
+            console.log('Sessione VR terminata');
+        });
 
         // Variabili per movimento e rotazione
         const raycaster = new THREE.Raycaster();
@@ -204,7 +214,8 @@
 
             renderer.render(scene, camera);
         }
-        animate();
+
+        renderer.setAnimationLoop(animate);
     </script>
 </body>
 </html>
