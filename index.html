@@ -9,7 +9,8 @@
             "imports": {
                 "three": "https://cdn.jsdelivr.net/npm/three@latest/build/three.module.js",
                 "three/examples/jsm/loaders/RGBELoader": "https://cdn.jsdelivr.net/npm/three@latest/examples/jsm/loaders/RGBELoader.js",
-                "three/examples/jsm/loaders/GLTFLoader": "https://cdn.jsdelivr.net/npm/three@latest/examples/jsm/loaders/GLTFLoader.js"
+                "three/examples/jsm/loaders/GLTFLoader": "https://cdn.jsdelivr.net/npm/three@latest/examples/jsm/loaders/GLTFLoader.js",
+                "three/examples/jsm/webxr/VRButton": "https://cdn.jsdelivr.net/npm/three@latest/examples/jsm/webxr/VRButton.js"
             }
         }
     </script>
@@ -22,6 +23,7 @@
         import * as THREE from "three";
         import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader";
         import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
+        import { VRButton } from "three/examples/jsm/webxr/VRButton";
 
         const scene = new THREE.Scene();
         const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -64,7 +66,15 @@
         loadModel("./assets/", "Arredi 1.glb");
         loadModel("./assets/", "Arredi 2.glb");
         loadModel("./assets/", "Arredi 3.glb");
+        loadModel("./assets/", "Porte_cornici e battiscopa.glb");
+        loadModel("./assets/", "Sedie tavolo da pranzo.glb");
+        loadModel("./assets/", "Soffitto.glb");
 
+        // Aggiungi il pulsante VR
+        document.body.appendChild(VRButton.createButton(renderer));
+
+        // Abilita WebXR
+        renderer.xr.enabled = true;
 
         // Variabili per movimento e rotazione
         const raycaster = new THREE.Raycaster();
