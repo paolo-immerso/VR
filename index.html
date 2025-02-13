@@ -10,7 +10,8 @@
                 "three": "https://cdn.jsdelivr.net/npm/three@latest/build/three.module.js",
                 "three/examples/jsm/loaders/RGBELoader": "https://cdn.jsdelivr.net/npm/three@latest/examples/jsm/loaders/RGBELoader.js",
                 "three/examples/jsm/loaders/GLTFLoader": "https://cdn.jsdelivr.net/npm/three@latest/examples/jsm/loaders/GLTFLoader.js",
-                "three/examples/jsm/webxr/VRButton": "https://cdn.jsdelivr.net/npm/three@latest/examples/jsm/webxr/VRButton.js"
+                "three/examples/jsm/webxr/VRButton": "https://cdn.jsdelivr.net/npm/three@latest/examples/jsm/webxr/VRButton.js",
+                "three/examples/jsm/webxr/XRControllerModelFactory": "https://cdn.jsdelivr.net/npm/three@latest/examples/jsm/webxr/XRControllerModelFactory.js"
             }
         }
     </script>
@@ -24,6 +25,7 @@
         import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader";
         import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
         import { VRButton } from "three/examples/jsm/webxr/VRButton";
+        import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory";
 
         const scene = new THREE.Scene();
         const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -31,7 +33,7 @@
         renderer.shadowMap.enabled = true;
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
         renderer.toneMappingExposure = 1;
-        renderer.xr.enabled = true;  // Assicurati che VR sia abilitato
+        renderer.xr.enabled = true;  // Abilita WebXR
         document.body.appendChild(renderer.domElement);
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
@@ -191,6 +193,56 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
+        // Configurazione VR e controller
+        const controllerModelFactory = new XRControllerModelFactory();
+        let controller1, controller2;
+
+        function setupXRControllers() {
+            controller1 = renderer.xr.getController(0);
+            controller1.addEventListener("selectstart", onSelectStart);
+            controller1.addEventListener("selectend", onSelectEnd);
+            scene.add(controller1);
+
+            const grip1 = renderer.xr.getControllerGrip(0);
+            grip1.add(controllerModelFactory.createControllerModel(grip1));
+            scene.add(grip1);
+
+            controller2 = renderer.xr.getController(1);
+            controller2.addEventListener("selectstart", onSelectStart);
+            controller2.addEventListener("selectend", onSelectEnd);
+            scene.add(controller2);
+
+            const grip2 = renderer.xr.getControllerGrip(1);
+            grip2.add(controllerModelFactory.createControllerModel(grip2));
+            scene.add(grip2);
+        }
+
+        // Teletrasporto in VR
+        function onSelectStart(event) {
+            const controller = event.target;
+            const intersections = getIntersections(controller);
+
+            if (intersections.length > 0) {
+                const point = intersections[0].point;
+                camera.position.set(point.x, camera.position.y, point.z);
+            }
+        }
+
+        function onSelectEnd(event) {
+            // Puoi aggiungere ulteriori azioni qui se necessario
+        }
+
+        function getIntersections(controller) {
+            const tempMatrix = new THREE.Matrix4();
+            tempMatrix.identity().extractRotation(controller.matrixWorld);
+
+            const ray = new THREE.Raycaster();
+            ray.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+            ray.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+
+            return ray.intersectObject(floorMesh, true);
+        }
+
         // Animazione
         function animate() {
             renderer.setAnimationLoop(() => {
@@ -204,6 +256,12 @@
                 renderer.render(scene, camera);
             });
         }
+
+        // Inizializzazione VR
+        renderer.xr.addEventListener("sessionstart", () => {
+            setupXRControllers();
+        });
+
         animate();
     </script>
 </body>
