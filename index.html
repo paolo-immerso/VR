@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Three.js - Modello Interattivo con Teletrasporto VR</title>
+    <title>Three.js - Modello Interattivo</title>
     <script type="importmap">
         {
             "imports": {
@@ -79,36 +79,6 @@
     let yaw = 0, pitch = 0;
     let previousMousePosition = { x: 0, y: 0 };
 
-    function onMouseDown(event) {
-        if (event.button === 0 && !renderer.xr.isPresenting) {
-            mousePressed = true;
-            isDragging = false;
-            previousMousePosition = { x: event.clientX, y: event.clientY };
-        }
-    }
-
-    function onMouseMove(event) {
-        if (!mousePressed || renderer.xr.isPresenting) return;
-        const deltaX = event.clientX - previousMousePosition.x;
-        const deltaY = event.clientY - previousMousePosition.y;
-        if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) isDragging = true;
-
-        if (isDragging) {
-            yaw -= deltaX * 0.002;
-            pitch -= deltaY * 0.002;
-            pitch = Math.max(-Math.PI / 4, Math.min(Math.PI / 4, pitch));
-            camera.quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, "YXZ"));
-        }
-        previousMousePosition = { x: event.clientX, y: event.clientY };
-    }
-
-    function onMouseUp(event) {
-        if (event.button === 0 && !renderer.xr.isPresenting) {
-            mousePressed = false;
-            if (!isDragging) moveToClick(event);
-        }
-    }
-
     function moveToClick(event) {
         if (!floorMesh || renderer.xr.isPresenting) return;
         mouse.set((event.clientX / window.innerWidth) * 2 - 1, -(event.clientY / window.innerHeight) * 2 + 1);
@@ -120,7 +90,7 @@
         }
     }
 
-    // Teletrasporto VR
+    // **VR Teleport**
     const controller1 = renderer.xr.getController(0);
     const controller2 = renderer.xr.getController(1);
     scene.add(controller1, controller2);
@@ -130,6 +100,7 @@
     controllerGrip1.add(controllerModelFactory.createControllerModel(controllerGrip1));
     scene.add(controllerGrip1);
 
+    // Puntatore laser per teletrasporto
     const teleportRay = new THREE.Line(
         new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]),
         new THREE.LineBasicMaterial({ color: 0xff0000 })
@@ -146,17 +117,14 @@
         raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
         const intersects = raycaster.intersectObject(floorMesh, true);
         if (intersects.length > 0) {
-            const point = intersects[0].point;
-            camera.position.set(point.x, camera.position.y, point.z);
+            camera.position.set(intersects[0].point.x, camera.position.y, intersects[0].point.z);
         }
     }
 
     controller1.addEventListener("selectstart", onSelectStart);
     controller2.addEventListener("selectstart", onSelectStart);
 
-    window.addEventListener("mousedown", onMouseDown);
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
+    window.addEventListener("mousedown", (event) => { if (!renderer.xr.isPresenting) moveToClick(event); });
 
     window.addEventListener("resize", () => {
         camera.aspect = window.innerWidth / window.innerHeight;
