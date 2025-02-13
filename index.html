@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VR Teleport con Three.js</title>
+    <title>Teleportazione con Oculus Quest 2 e Three.js</title>
     <style>
         body { margin: 0; }
         canvas { display: block; }
@@ -11,66 +11,67 @@
 </head>
 <body>
     <script type="module">
-        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.132/build/three.module.js';
-        import { VRButton } from 'https://cdn.jsdelivr.net/npm/three@0.132/examples/jsm/webxr/VRButton.js';
+        import * as THREE from 'https://unpkg.com/three@0.146.0/build/three.module.js';
+        import { VRButton } from 'https://unpkg.com/three@0.146.0/examples/jsm/webxr/VRButton.js';
 
-        // Creazione della scena, camera e renderer
+        // Creazione della scena
         const scene = new THREE.Scene();
+
+        // Camera
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 1.6, 5); // Altezza della camera simile a quella di un essere umano
+
+        // Renderer
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.xr.enabled = true; // Abilita XR
+        renderer.xr.enabled = true; // Abilita WebXR
         document.body.appendChild(renderer.domElement);
+        document.body.appendChild(VRButton.createButton(renderer)); // Aggiungi il pulsante VR
 
-        // Aggiungi il pulsante VR
-        document.body.appendChild(VRButton.createButton(renderer));
+        // Aggiungi una piattaforma
+        const platformGeometry = new THREE.BoxGeometry(10, 0.1, 10);
+        const platformMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+        const platform = new THREE.Mesh(platformGeometry, platformMaterial);
+        platform.position.y = -0.05; // Posiziona la piattaforma leggermente sotto l'origine
+        scene.add(platform);
 
-        // Aggiungi una luce
+        // Illuminazione (opzionale, per migliorare la visibilità)
         const light = new THREE.DirectionalLight(0xffffff, 1);
-        light.position.set(0, 10, 10);
+        light.position.set(5, 5, 5).normalize();
         scene.add(light);
 
-        // Aggiungi un piano (terreno)
-        const planeGeometry = new THREE.PlaneGeometry(10, 10);
-        const planeMaterial = new THREE.MeshPhongMaterial({ color: 0xcccccc });
-        const plane = new THREE.Mesh(planeGeometry, planeMaterial);
-        plane.rotation.x = -Math.PI / 2;
-        scene.add(plane);
+        // Controller per la teleportazione
+        let controller1, controller2;
 
-        // Posizione iniziale della camera
-        camera.position.set(0, 1.6, 5);
-
-        // Aggiungi un controller XR
-        const controller = renderer.xr.getController(0);
-        scene.add(controller);
-
-        // Raycaster per rilevare le intersezioni
-        const raycaster = new THREE.Raycaster();
-        const tempMatrix = new THREE.Matrix4();
-        let targetPosition = new THREE.Vector3();
-
-        // Gestione del teleport
-        controller.addEventListener('selectstart', () => {
-            tempMatrix.identity().extractRotation(controller.matrixWorld);
-
-            // Imposta il raycaster per il controller
-            raycaster.setFromXRController(controller);
-
-            // Controlla le intersezioni con il piano
-            const intersects = raycaster.intersectObjects([plane]);
-
-            if (intersects.length > 0) {
-                targetPosition.copy(intersects[0].point);
-                targetPosition.y += 1.6; // Altezza della camera
+        // Funzione per gestire l'inizio della selezione (teleportazione)
+        function onControllerSelectStart(event) {
+            const controller = event.target;
+            const intersection = getIntersection(controller);
+            if (intersection) {
+                // Sposta la camera nella nuova posizione
+                const position = intersection.point;
+                camera.position.set(position.x, camera.position.y, position.z);
             }
-        });
+        }
 
-        controller.addEventListener('selectend', () => {
-            // Sposta la camera alla posizione di teleport
-            camera.position.copy(targetPosition);
-        });
+        // Funzione per rilevare l'intersezione con la piattaforma
+        function getIntersection(controller) {
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(new THREE.Vector2(), controller);
+            const intersects = raycaster.intersectObjects([platform]);
+            return intersects.length > 0 ? intersects[0] : null;
+        }
 
-        // Animazione della scena
+        // Aggiungi i controller
+        controller1 = renderer.xr.getController(0);
+        controller1.addEventListener('selectstart', onControllerSelectStart);
+        scene.add(controller1);
+
+        controller2 = renderer.xr.getController(1);
+        controller2.addEventListener('selectstart', onControllerSelectStart);
+        scene.add(controller2);
+
+        // Render loop
         function animate() {
             renderer.setAnimationLoop(() => {
                 renderer.render(scene, camera);
