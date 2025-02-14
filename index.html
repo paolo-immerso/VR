@@ -241,12 +241,11 @@
         // Funzione per gestire la fine della selezione del punto di teleportation
         function onSelectEnd(event) {
             if (teleportationTarget) {
-                const distance = camera.position.distanceTo(teleportationTarget);
-                if (distance > 0.1) { // Verifica che il punto sia abbastanza lontano
-                    // Teletrasporta la camera al punto indicato dal cerchio verde
-                    camera.position.set(teleportationTarget.x, camera.position.y, teleportationTarget.z);
-                    console.log("Camera teleported to:", teleportationTarget); // Debug
-                }
+                // Teletrasporta la camera al punto indicato dal cerchio verde
+                camera.position.set(teleportationTarget.x, camera.position.y, teleportationTarget.z);
+                console.log("Camera teleported to:", teleportationTarget); // Debug
+
+                // Nascondi il marker di teleportation
                 teleportationMarker.visible = false;
                 teleportationTarget = null;
             }
@@ -264,14 +263,16 @@
 
             // Interseca tutte le mesh figlie del pavimento
             const intersections = [];
-            floorMesh.traverse((child) => {
-                if (child.isMesh) {
-                    const childIntersections = ray.intersectObject(child, true);
-                    if (childIntersections.length > 0) {
-                        intersections.push(...childIntersections);
+            if (floorMesh) {
+                floorMesh.traverse((child) => {
+                    if (child.isMesh) {
+                        const childIntersections = ray.intersectObject(child, true);
+                        if (childIntersections.length > 0) {
+                            intersections.push(...childIntersections);
+                        }
                     }
-                }
-            });
+                });
+            }
 
             return intersections;
         }
