@@ -193,70 +193,7 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
-        // Variabili per la teleportation VR
-        let teleportationTarget = null;
-        let teleportationMarker = null;
-        const debugLine = new THREE.Line(
-            new THREE.BufferGeometry(),
-            new THREE.LineBasicMaterial({ color: 0xff0000 })
-        );
-        scene.add(debugLine);
-        debugLine.visible = false;
 
-        // Funzione per creare un marker visivo per la teleportation
-        function createTeleportationMarker() {
-            const geometry = new THREE.RingGeometry(0.1, 0.2, 32);
-            const material = new THREE.MeshBasicMaterial({ color: 0x00ff00, side: THREE.DoubleSide });
-            const ring = new THREE.Mesh(geometry, material);
-            ring.rotation.x = -Math.PI / 2;
-            ring.visible = false;
-            scene.add(ring);
-            return ring;
-        }
-
-        // Inizializza il marker di teleportation
-        teleportationMarker = createTeleportationMarker();
-
-        // Funzione per gestire l'inizio della selezione del punto di teleportation
-        function onSelectStart(event) {
-            const controller = event.target;
-            const intersections = getIntersections(controller);
-
-            if (intersections.length > 0) {
-                const point = intersections[0].point;
-                teleportationTarget = point;
-                teleportationMarker.position.copy(point);
-                teleportationMarker.visible = true;
-
-                // Debug: disegna una linea dal controller al punto di intersezione
-                debugLine.geometry.setFromPoints([controller.position, point]);
-                debugLine.visible = true;
-            } else {
-                debugLine.visible = false;
-            }
-        }
-
-        // Funzione per gestire la fine della selezione del punto di teleportation
-        function onSelectEnd(event) {
-            if (teleportationTarget) {
-                const xrSession = renderer.xr.getSession();
-                if (xrSession) {
-                    // Crea un nuovo XRRigidTransform per la nuova posizione
-                    const newPosition = new XRRigidTransform(
-                        new DOMPoint(teleportationTarget.x, camera.position.y, teleportationTarget.z)
-                    );
-
-                    // Sposta l'XRSpace della telecamera
-                    xrSession.updateWorldTrackingState({
-                        baseLayer: newPosition
-                    });
-                }
-
-                teleportationMarker.visible = false;
-                teleportationTarget = null;
-            }
-            debugLine.visible = false;
-        }
 
         // Funzione per ottenere le intersezioni con il pavimento
         function getIntersections(controller) {
@@ -309,6 +246,65 @@
         renderer.xr.addEventListener("sessionstart", () => {
             setupXRControllers();
         });
+
+                // Variabili per la teleportation VR
+                let teleportationTarget = null;
+        let teleportationMarker = null;
+        const debugLine = new THREE.Line(
+            new THREE.BufferGeometry(),
+            new THREE.LineBasicMaterial({ color: 0xff0000 })
+        );
+        scene.add(debugLine);
+        debugLine.visible = false;
+
+        // Funzione per creare un marker visivo per la teleportation
+        function createTeleportationMarker() {
+            const geometry = new THREE.RingGeometry(0.1, 0.2, 32);
+            const material = new THREE.MeshBasicMaterial({ color: 0x00ff00, side: THREE.DoubleSide });
+            const ring = new THREE.Mesh(geometry, material);
+            ring.rotation.x = -Math.PI / 2;
+            ring.visible = false;
+            scene.add(ring);
+            return ring;
+        }
+
+        // Inizializza il marker di teleportation
+        teleportationMarker = createTeleportationMarker();
+
+        function onSelectStart(event) {
+            const controller = event.target;
+            const intersections = getIntersections(controller);
+
+            if (intersections.length > 0) {
+                teleportTarget = intersections[0].point;
+                teleportMarker.position.copy(teleportTarget);
+                teleportMarker.visible = true;
+            }
+        }
+
+        function onSelectEnd(event) {
+            if (teleportTarget) {
+                console.log("Teleporting to:", teleportTarget);
+
+                // **Fix: Sposta la camera nel punto selezionato mantenendo la sua altezza**
+                camera.position.set(teleportTarget.x, 1.6, teleportTarget.z);
+
+                teleportMarker.visible = false;
+                teleportTarget = null;
+            }
+        }
+
+        renderer.xr.addEventListener("sessionstart", () => {
+            setupVRControllers();
+        });
+
+        function animate() {
+            renderer.setAnimationLoop(() => {
+                renderer.render(scene, camera);
+            });
+        }
+
+        
 
         // Animazione
         function animate() {
