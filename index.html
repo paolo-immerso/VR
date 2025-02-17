@@ -193,6 +193,11 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
+        // Creazione del cameraRig
+        const cameraRig = new THREE.Group();
+        cameraRig.add(camera); // Aggiungi la telecamera al cameraRig
+        scene.add(cameraRig); // Aggiungi il cameraRig alla scena
+
         // Teleportation VR
         let teleportationTarget = null;
         let teleportationMarker = null;
@@ -238,8 +243,8 @@
 
         function onSelectEnd(event) {
             if (teleportationTarget) {
-                const cameraRig = renderer.xr.getCamera(camera).parent;
                 if (cameraRig) {
+                    // Sposta il cameraRig (e quindi la telecamera) alla posizione di teleportazione
                     cameraRig.position.set(teleportationTarget.x, cameraRig.position.y, teleportationTarget.z);
                     console.log("Camera teleported to:", teleportationTarget);
                 } else {
