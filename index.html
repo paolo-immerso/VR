@@ -219,6 +219,35 @@
             return ring;
         }
 
+        function calculateParabolicPath(controller, segments = 20, gravity = -9.8, initialVelocity = 5) {
+            const points = [];
+            const start = new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld);
+            const direction = new THREE.Vector3(0, 0, -1).applyQuaternion(controller.quaternion);
+            direction.normalize().multiplyScalar(initialVelocity);
+
+            let position = start.clone();
+            let velocity = direction.clone();
+            let deltaT = 0.05; // Tempo simulato per ogni segmento
+
+            for (let i = 0; i < segments; i++) {
+                velocity.y += gravity * deltaT;  // Applica gravità
+                position.add(velocity.clone().multiplyScalar(deltaT));
+                points.push(position.clone());
+
+                // Verifica se la traiettoria colpisce il pavimento
+                raycaster.set(position, velocity.clone().normalize());
+                const intersects = raycaster.intersectObject(floorMesh, true);
+                if (intersects.length > 0) {
+                    teleportationTarget = intersects[0].point;
+                    teleportationMarker.position.copy(teleportationTarget);
+                    teleportationMarker.visible = true;
+                    break;
+                }
+            }
+            return points;
+        }
+
+
         teleportationMarker = createTeleportationMarker();
 
         // Variabile per tenere traccia dello stato del trigger
@@ -231,41 +260,25 @@
             const controller = event.target;
             isTriggerPressed = true;
 
-            // Aggiorna l'indicatore di teletrasporto ogni frame
             function updateTeleportationTarget() {
                 if (!isTriggerPressed) return;
 
-                const intersections = getIntersections(controller);
+                const points = calculateParabolicPath(controller);
 
-                if (intersections.length > 0) {
-                    const point = intersections[0].point;
-                    teleportationTarget = point;
-                    teleportationMarker.position.copy(point);
-                    teleportationMarker.visible = true;
-
-                    // Aggiorna la posizione del fascio per partire sempre dal controller
-                    debugLine.geometry.setFromPoints([
-                        new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld),
-                        point
-                    ]);
-
-                    debugLine.userData.controller = controller;
-                    debugLine.userData.targetPoint = point;
+                if (points.length > 0) {
+                    debugLine.geometry.setFromPoints(points);
                     debugLine.visible = true;
-
-                    console.log("Teleportation target updated to:", point);
                 } else {
-                    teleportationMarker.visible = false;
                     debugLine.visible = false;
+                    teleportationMarker.visible = false;
                 }
 
-                // Richiama la funzione al prossimo frame
                 requestAnimationFrame(updateTeleportationTarget);
             }
 
-            // Avvia l'aggiornamento dell'indicatore
             updateTeleportationTarget();
         }
+
 
 
         
