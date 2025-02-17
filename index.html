@@ -198,7 +198,7 @@
         cameraRig.add(camera); // Aggiungi la telecamera al cameraRig
         scene.add(cameraRig); // Aggiungi il cameraRig alla scena
 
-        // Teleportation VR
+        // FASCIO TELEPORT
         let teleportationTarget = null;
         let teleportationMarker = null;
         const debugLine = new THREE.Line(
@@ -208,6 +208,7 @@
         cameraRig.add(debugLine);
         debugLine.visible = false;
 
+        // CERCHIO TELEPORT
         function createTeleportationMarker() {
             const geometry = new THREE.RingGeometry(0.1, 0.2, 32);
             const material = new THREE.MeshBasicMaterial({ color: 0x00ff00, side: THREE.DoubleSide });
@@ -220,40 +221,80 @@
 
         teleportationMarker = createTeleportationMarker();
 
+        // Variabile per tenere traccia dello stato del trigger
+        let isTriggerPressed = false;
+
+        // START
         function onSelectStart(event) {
             if (!renderer.xr.isPresenting) return;
 
             const controller = event.target;
-            const intersections = getIntersections(controller);
+            isTriggerPressed = true;
 
-            if (intersections.length > 0) {
-                const point = intersections[0].point;
-                teleportationTarget = point;
-                teleportationMarker.position.copy(point);
-                teleportationMarker.visible = true;
+            // Aggiorna l'indicatore di teletrasporto ogni frame
+            function updateTeleportationTarget() {
+                if (!isTriggerPressed) return;
 
-                const controllerPosition = new THREE.Vector3();
-                controller.getWorldPosition(controllerPosition);
+                const intersections = getIntersections(controller);
 
-                debugLine.geometry.setFromPoints([controllerPosition, point]);
+                if (intersections.length > 0) {
+                    const point = intersections[0].point;
+                    teleportationTarget = point;
+                    teleportationMarker.position.copy(point);
+                    teleportationMarker.visible = true;
 
-                debugLine.visible = true;
+                    // Aggiorna la posizione del fascio per partire sempre dal controller
+                    debugLine.geometry.setFromPoints([
+                        new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld),
+                        point
+                    ]);
 
-                console.log("Teleportation target set to:", point);
-            } else {
-                debugLine.visible = false;
+                    debugLine.userData.controller = controller;
+                    debugLine.userData.targetPoint = point;
+                    debugLine.visible = true;
+
+                    console.log("Teleportation target updated to:", point);
+                } else {
+                    teleportationMarker.visible = false;
+                    debugLine.visible = false;
+                }
+
+                // Richiama la funzione al prossimo frame
+                requestAnimationFrame(updateTeleportationTarget);
             }
+
+            // Avvia l'aggiornamento dell'indicatore
+            updateTeleportationTarget();
         }
+
 
         
 
-
+        // END
+        // Modifica la funzione onSelectEnd
         function onSelectEnd(event) {
+            isTriggerPressed = false;
+
             if (teleportationTarget) {
                 if (cameraRig) {
-                    // Sposta il cameraRig (e quindi la telecamera) alla posizione di teleportazione
+                    // Sposta il cameraRig (e quindi la telecamera) alla posizione di teletrasportazione
                     cameraRig.position.set(teleportationTarget.x, cameraRig.position.y, teleportationTarget.z);
                     console.log("Camera teleported to:", teleportationTarget);
+
+                    // Dopo il teletrasporto, aggiorna il debugLine per riflettere la nuova posizione del controller
+                    if (debugLine.userData.controller) {
+                        const controller = debugLine.userData.controller;
+                        const intersections = getIntersections(controller);
+
+                        if (intersections.length > 0) {
+                            const point = intersections[0].point;
+                            debugLine.geometry.setFromPoints([
+                                new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld),
+                                point
+                            ]);
+                            debugLine.userData.targetPoint = point;
+                        }
+                    }
                 } else {
                     console.warn("Camera rig not found!");
                 }
