@@ -205,7 +205,7 @@
             new THREE.BufferGeometry(),
             new THREE.LineBasicMaterial({ color: 0xff0000 })
         );
-        scene.add(debugLine);
+        cameraRig.add(debugLine);
         debugLine.visible = false;
 
         function createTeleportationMarker() {
@@ -232,7 +232,11 @@
                 teleportationMarker.position.copy(point);
                 teleportationMarker.visible = true;
 
-                debugLine.geometry.setFromPoints([controller.position, point]);
+                const controllerPosition = new THREE.Vector3();
+                controller.getWorldPosition(controllerPosition);
+
+                debugLine.geometry.setFromPoints([controllerPosition, point]);
+
                 debugLine.visible = true;
 
                 console.log("Teleportation target set to:", point);
@@ -240,6 +244,9 @@
                 debugLine.visible = false;
             }
         }
+
+        
+
 
         function onSelectEnd(event) {
             if (teleportationTarget) {
