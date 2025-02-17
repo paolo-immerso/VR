@@ -271,6 +271,7 @@
         
 
         // END
+        
         // Modifica la funzione onSelectEnd
         function onSelectEnd(event) {
             isTriggerPressed = false;
@@ -284,14 +285,16 @@
                     // Dopo il teletrasporto, aggiorna il debugLine per riflettere la nuova posizione del controller
                     if (debugLine.userData.controller) {
                         const controller = debugLine.userData.controller;
+
+                        // Ricalcola l'intersezione con il pavimento
                         const intersections = getIntersections(controller);
 
                         if (intersections.length > 0) {
                             const point = intersections[0].point;
-                            debugLine.geometry.setFromPoints([
-                                new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld),
-                                point
-                            ]);
+
+                            // Aggiorna il debugLine in base alla nuova posizione globale del controller
+                            const controllerPosition = new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld);
+                            debugLine.geometry.setFromPoints([controllerPosition, point]);
                             debugLine.userData.targetPoint = point;
                         }
                     }
@@ -303,6 +306,39 @@
                 teleportationTarget = null;
             }
             debugLine.visible = false;
+        }
+
+        // Modifica la funzione updateTeleportationTarget
+        function updateTeleportationTarget() {
+            if (!isTriggerPressed) return;
+
+            const controller = debugLine.userData.controller;
+
+            if (controller) {
+                const intersections = getIntersections(controller);
+
+                if (intersections.length > 0) {
+                    const point = intersections[0].point;
+                    teleportationTarget = point;
+                    teleportationMarker.position.copy(point);
+                    teleportationMarker.visible = true;
+
+                    // Aggiorna il debugLine in base alla posizione globale del controller
+                    const controllerPosition = new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld);
+                    debugLine.geometry.setFromPoints([controllerPosition, point]);
+
+                    debugLine.userData.targetPoint = point;
+                    debugLine.visible = true;
+
+                    console.log("Teleportation target updated to:", point);
+                } else {
+                    teleportationMarker.visible = false;
+                    debugLine.visible = false;
+                }
+            }
+
+            // Richiama la funzione al prossimo frame
+            requestAnimationFrame(updateTeleportationTarget);
         }
 
         function getIntersections(controller) {
