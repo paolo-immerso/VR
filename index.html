@@ -1,4 +1,3 @@
-@ -1,349 +1,390 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
@@ -206,7 +205,8 @@
             new THREE.BufferGeometry(),
             new THREE.LineBasicMaterial({ color: 0xff0000 })
         );
-        cameraRig.add(debugLine);
+        controller1.add(debugLine);
+        controller2.add(debugLine);
         debugLine.visible = false;
 
         // CERCHIO TELEPORT
@@ -378,6 +378,21 @@
                     camera.position.lerp(targetPosition, 0.1);
                     if (camera.position.distanceTo(targetPosition) < 0.1) {
                         isMoving = false;
+                    }
+                }
+
+                // Aggiorna la linea rossa se il trigger è premuto
+                if (isTriggerPressed && debugLine.userData.controller) {
+                    const controller = debugLine.userData.controller;
+                    const intersections = getIntersections(controller);
+
+                    if (intersections.length > 0) {
+                        const point = intersections[0].point;
+                        debugLine.geometry.setFromPoints([
+                            new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld),
+                            point
+                        ]);
+                        debugLine.userData.targetPoint = point;
                     }
                 }
 
