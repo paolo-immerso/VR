@@ -225,10 +225,10 @@
             if (!teleportationTarget) return;
 
             const controllerPosition = new THREE.Vector3();
-            controller.getWorldPosition(controllerPosition); // Ottieni posizione aggiornata
+            controller.getWorldPosition(controllerPosition); // Ottieni la posizione aggiornata
 
             const points = [controllerPosition, teleportationTarget];
-            debugLine.geometry.dispose();
+            debugLine.geometry.dispose(); // Elimina la vecchia geometria
             debugLine.geometry = new THREE.BufferGeometry().setFromPoints(points);
             debugLine.visible = true;
         }
@@ -245,9 +245,6 @@
                 teleportationTarget = intersections[0].point;
                 teleportationMarker.position.copy(teleportationTarget);
                 teleportationMarker.visible = true;
-
-                // Aggiorna la linea immediatamente
-                updateDebugLine(controller);
             }
         }
 
@@ -351,15 +348,22 @@
                     }
                 }
 
-                // Aggiorna la linea rossa mentre il trigger è premuto
+                // Se il teleport è attivo, aggiorna cerchio e linea
                 if (teleportationTarget) {
-                    if (controller1) updateDebugLine(controller1);
-                    if (controller2) updateDebugLine(controller2);
+                    if (controller1) {
+                        updateDebugLine(controller1);
+                        teleportationMarker.position.copy(teleportationTarget);
+                    }
+                    if (controller2) {
+                        updateDebugLine(controller2);
+                        teleportationMarker.position.copy(teleportationTarget);
+                    }
                 }
 
                 renderer.render(scene, camera);
             });
         }
+
 
         animate();
     </script>
