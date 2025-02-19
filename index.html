@@ -3,11 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Three.js VR Teleport</title>
+    <title>Three.js - Modello Interattivo</title>
     <script type="importmap">
         {
             "imports": {
                 "three": "https://cdn.jsdelivr.net/npm/three@latest/build/three.module.js",
+                "three/examples/jsm/loaders/RGBELoader": "https://cdn.jsdelivr.net/npm/three@latest/examples/jsm/loaders/RGBELoader.js",
                 "three/examples/jsm/loaders/GLTFLoader": "https://cdn.jsdelivr.net/npm/three@latest/examples/jsm/loaders/GLTFLoader.js",
                 "three/examples/jsm/webxr/VRButton": "https://cdn.jsdelivr.net/npm/three@latest/examples/jsm/webxr/VRButton.js",
                 "three/examples/jsm/webxr/XRControllerModelFactory": "https://cdn.jsdelivr.net/npm/three@latest/examples/jsm/webxr/XRControllerModelFactory.js"
@@ -15,12 +16,13 @@
         }
     </script>
     <style>
-        body { margin: 0; overflow: hidden; }
+        body { margin: 0; overflow: hidden; cursor: crosshair; }
     </style>
 </head>
 <body>
     <script type="module">
         import * as THREE from "three";
+        import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader";
         import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
         import { VRButton } from "three/examples/jsm/webxr/VRButton";
         import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory";
@@ -28,131 +30,302 @@
         const scene = new THREE.Scene();
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.xr.enabled = true;
+        renderer.shadowMap.enabled = true;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1;
+        renderer.xr.enabled = true;  // Abilita WebXR
         document.body.appendChild(renderer.domElement);
-        document.body.appendChild(VRButton.createButton(renderer));
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
-        camera.position.set(0, 1.6, 3);
-        
-        const cameraRig = new THREE.Group();
-        cameraRig.add(camera);
-        scene.add(cameraRig);
+        camera.position.set(0, 1.6, 5);
 
-        let floorMesh = new THREE.Mesh(
-            new THREE.PlaneGeometry(10, 10),
-            new THREE.MeshStandardMaterial({ color: 0x555555 })
-        );
-        floorMesh.rotation.x = -Math.PI / 2;
-        floorMesh.receiveShadow = true;
-        scene.add(floorMesh);
+        // Aggiungi il pulsante VR
+        document.body.appendChild(VRButton.createButton(renderer));
 
-        const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1);
-        scene.add(light);
-
-        // Teleportation Marker con sfumatura
-        const teleportMaterial = new THREE.ShaderMaterial({
-            uniforms: { color: { value: new THREE.Color(0x00ffff) } },
-            vertexShader: `
-                varying vec2 vUv;
-                void main() {
-                    vUv = uv;
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-                }
-            `,
-            fragmentShader: `
-                varying vec2 vUv;
-                uniform vec3 color;
-                void main() {
-                    float alpha = smoothstep(1.0, 0.3, vUv.y);
-                    gl_FragColor = vec4(color, alpha);
-                }
-            `,
-            transparent: true
+        // Caricamento HDR
+        const rgbeLoader = new RGBELoader();
+        rgbeLoader.setPath("./assets/hdris/").load("outdoor2.hdr", (texture) => {
+            texture.mapping = THREE.EquirectangularReflectionMapping;
+            scene.environment = texture;
+            scene.background = texture;
         });
 
-        let teleportationMarker = new THREE.Mesh(
-            new THREE.RingGeometry(0.1, 0.5, 32),
-            teleportMaterial
-        );
-        teleportationMarker.rotation.x = -Math.PI / 2;
-        teleportationMarker.visible = false;
-        scene.add(teleportationMarker);
+        // Caricamento modelli GLTF
+        const gltfLoader = new GLTFLoader();
+        let floorMesh = null;
 
-        // Fascio del teletrasporto curvo
-        let debugLine = new THREE.Line(
-            new THREE.BufferGeometry(),
-            new THREE.LineBasicMaterial({ color: 0x00ffff, linewidth: 3 })
-        );
-        scene.add(debugLine);
-        debugLine.visible = false;
+        function loadModel(path, fileName) {
+            gltfLoader.setPath(path).load(fileName, (gltf) => {
+                const model = gltf.scene;
+                scene.add(model);
+                if (fileName === "Pavimento.glb") {
+                    floorMesh = model;
+                }
+            });
+        }
 
-        let teleportationTarget = null;
-        let isTriggerPressed = false;
+        // Modelli da caricare
+        loadModel("./assets/", "Pavimento.glb");
+        loadModel("./assets/", "Pareti.glb");
+        loadModel("./assets/", "Divano salotto.glb");
+        loadModel("./assets/", "Finestre.glb");
+        loadModel("./assets/", "Arredi 1.glb");
+        loadModel("./assets/", "Arredi 2.glb");
+        loadModel("./assets/", "Arredi 3.glb");
+        loadModel("./assets/", "Porte_cornici e battiscopa.glb");
+        loadModel("./assets/", "Sedie tavolo da pranzo.glb");
+        loadModel("./assets/", "Soffitto.glb");
 
-        function createTeleportArc(controller) {
-            const numPoints = 20;
-            const points = [];
-            const start = new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld);
-            const direction = new THREE.Vector3(0, 0, -1).applyMatrix4(controller.matrixWorld);
-            const velocity = direction.multiplyScalar(2.5);
+        // Variabili per movimento e rotazione
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        let targetPosition = new THREE.Vector3();
+        let isMoving = false;
+        let isDragging = false;
+        let mousePressed = false;
+        let yaw = 0;
+        let pitch = 0;
+        let previousMousePosition = { x: 0, y: 0 };
 
-            for (let i = 0; i < numPoints; i++) {
-                const t = i / (numPoints - 1);
-                const point = new THREE.Vector3(
-                    start.x + velocity.x * t,
-                    start.y + velocity.y * t - 4.9 * t * t,
-                    start.z + velocity.z * t
-                );
-                points.push(point);
+        // Eventi mouse
+        function onMouseDown(event) {
+            if (event.button === 0 && !renderer.xr.isPresenting) {
+                mousePressed = true;
+                isDragging = false;
+                previousMousePosition.x = event.clientX;
+                previousMousePosition.y = event.clientY;
+            }
+        }
+
+        function onMouseMove(event) {
+            if (!mousePressed || renderer.xr.isPresenting) return;
+
+            const deltaX = event.clientX - previousMousePosition.x;
+            const deltaY = event.clientY - previousMousePosition.y;
+
+            if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) isDragging = true;
+
+            if (isDragging) {
+                yaw -= deltaX * 0.002;
+                pitch -= deltaY * 0.002;
+                pitch = Math.max(-Math.PI / 4, Math.min(Math.PI / 4, pitch));
+                camera.quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, "YXZ"));
             }
 
-            const curve = new THREE.CatmullRomCurve3(points);
-            const geometry = new THREE.BufferGeometry().setFromPoints(curve.getPoints(numPoints));
+            previousMousePosition.x = event.clientX;
+            previousMousePosition.y = event.clientY;
+        }
 
-            debugLine.geometry.dispose();
-            debugLine.geometry = geometry;
-            debugLine.visible = true;
+        function onMouseUp(event) {
+            if (event.button === 0 && !renderer.xr.isPresenting) {
+                mousePressed = false;
+                if (!isDragging) moveToClick(event);
+            }
+        }
+
+        // Eventi touch per dispositivi mobili
+        function onTouchStart(event) {
+            if (event.touches.length === 1 && !renderer.xr.isPresenting) {
+                mousePressed = true;
+                isDragging = false;
+                previousMousePosition.x = event.touches[0].clientX;
+                previousMousePosition.y = event.touches[0].clientY;
+            }
+        }
+
+        function onTouchMove(event) {
+            if (!mousePressed || event.touches.length !== 1 || renderer.xr.isPresenting) return;
+
+            const touch = event.touches[0];
+            const deltaX = touch.clientX - previousMousePosition.x;
+            const deltaY = touch.clientY - previousMousePosition.y;
+
+            if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) isDragging = true;
+
+            if (isDragging) {
+                yaw -= deltaX * 0.002;
+                pitch -= deltaY * 0.002;
+                pitch = Math.max(-Math.PI / 4, Math.min(Math.PI / 4, pitch));
+                camera.quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, "YXZ"));
+            }
+
+            previousMousePosition.x = touch.clientX;
+            previousMousePosition.y = touch.clientY;
+        }
+
+        function onTouchEnd(event) {
+            if (!renderer.xr.isPresenting) {
+                mousePressed = false;
+                if (!isDragging) moveToClick(event.changedTouches[0]);
+            }
+        }
+
+        // Movimento verso il punto cliccato/toccato
+        function moveToClick(event) {
+            if (!floorMesh || renderer.xr.isPresenting) return;
+
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObject(floorMesh, true);
+
+            if (intersects.length > 0) {
+                const point = intersects[0].point;
+                const moveDirection = new THREE.Vector3().subVectors(point, camera.position).setY(0).normalize();
+                targetPosition.copy(camera.position).addScaledVector(moveDirection, camera.position.distanceTo(point));
+                isMoving = true;
+            }
+        }
+
+        // Event listeners
+        window.addEventListener("mousedown", onMouseDown);
+        window.addEventListener("mousemove", onMouseMove);
+        window.addEventListener("mouseup", onMouseUp);
+
+        window.addEventListener("touchstart", onTouchStart, { passive: false });
+        window.addEventListener("touchmove", onTouchMove, { passive: false });
+        window.addEventListener("touchend", onTouchEnd);
+
+        window.addEventListener("resize", () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Creazione del cameraRig
+        const cameraRig = new THREE.Group();
+        cameraRig.add(camera); // Aggiungi la telecamera al cameraRig
+        scene.add(cameraRig); // Aggiungi il cameraRig alla scena
+
+        // FASCIO TELEPORT
+        let teleportationTarget = null;
+        let teleportationMarker = null;
+        const debugLine = new THREE.Line(
+            new THREE.BufferGeometry(),
+            new THREE.LineBasicMaterial({ color: 0x00ff00 })
+        );
+        cameraRig.add(debugLine);
+        debugLine.visible = false;
+
+        // CERCHIO TELEPORT
+        function createTeleportationMarker() {
+            const geometry = new THREE.RingGeometry(0.1, 0.2, 32);
+            const material = new THREE.MeshBasicMaterial({ color: 0x00ff00, side: THREE.DoubleSide });
+            const ring = new THREE.Mesh(geometry, material);
+            ring.rotation.x = -Math.PI / 2;
+            ring.visible = false;
+            scene.add(ring);
+            return ring;
+        }
+
+        teleportationMarker = createTeleportationMarker();
+
+        // Variabile per tenere traccia dello stato del trigger
+        let isTriggerPressed = false;
+
+        // START
+        function onSelectStart(event) {
+            if (!renderer.xr.isPresenting) return;
+
+            const controller = event.target;
+            isTriggerPressed = true;
+
+            // Aggiorna l'indicatore di teletrasporto ogni frame
+            function updateTeleportationTarget() {
+                if (!isTriggerPressed) return;
+
+                const intersections = getIntersections(controller);
+
+                if (intersections.length > 0) {
+                    const point = intersections[0].point;
+                    teleportationTarget = point;
+                    teleportationMarker.position.copy(point);
+                    teleportationMarker.visible = true;
+
+                    // Aggiorna la posizione del fascio per partire sempre dal controller
+                    debugLine.geometry.setFromPoints([
+                        new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld),
+                        point
+                    ]);
+
+                    debugLine.userData.controller = controller;
+                    debugLine.userData.targetPoint = point;
+                    debugLine.visible = true;
+
+                    console.log("Teleportation target updated to:", point);
+                } else {
+                    teleportationMarker.visible = false;
+                    debugLine.visible = false;
+                }
+
+                // Richiama la funzione al prossimo frame
+                requestAnimationFrame(updateTeleportationTarget);
+            }
+
+            // Avvia l'aggiornamento dell'indicatore
+            updateTeleportationTarget();
+        }
+
+
+        
+
+        // END
+        // Modifica la funzione onSelectEnd
+        function onSelectEnd(event) {
+            isTriggerPressed = false;
+
+            if (teleportationTarget) {
+                if (cameraRig) {
+                    // Sposta il cameraRig (e quindi la telecamera) alla posizione di teletrasportazione
+                    cameraRig.position.set(teleportationTarget.x, cameraRig.position.y, teleportationTarget.z);
+                    console.log("Camera teleported to:", teleportationTarget);
+
+                    // Dopo il teletrasporto, aggiorna il debugLine per riflettere la nuova posizione del controller
+                    if (debugLine.userData.controller) {
+                        const controller = debugLine.userData.controller;
+                        const intersections = getIntersections(controller);
+
+                        if (intersections.length > 0) {
+                            const point = intersections[0].point;
+                            debugLine.geometry.setFromPoints([
+                                new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld),
+                                point
+                            ]);
+                            debugLine.userData.targetPoint = point;
+                        }
+                    }
+                } else {
+                    console.warn("Camera rig not found!");
+                }
+
+                teleportationMarker.visible = false;
+                teleportationTarget = null;
+            }
+            debugLine.visible = false;
         }
 
         function getIntersections(controller) {
-            const tempMatrix = new THREE.Matrix4().extractRotation(controller.matrixWorld);
+            const tempMatrix = new THREE.Matrix4();
+            tempMatrix.identity().extractRotation(controller.matrixWorld);
+
             const ray = new THREE.Raycaster();
             ray.ray.origin.setFromMatrixPosition(controller.matrixWorld);
             ray.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
 
-            return ray.intersectObject(floorMesh, true);
-        }
-
-        function updateTeleportationTarget(controller) {
-            if (!isTriggerPressed) return;
-
-            const intersections = getIntersections(controller);
-            if (intersections.length > 0) {
-                teleportationTarget = intersections[0].point;
-                teleportationMarker.position.copy(teleportationTarget);
-                teleportationMarker.visible = true;
-                createTeleportArc(controller);
-            } else {
-                teleportationMarker.visible = false;
-                debugLine.visible = false;
+            const intersections = [];
+            if (floorMesh) {
+                floorMesh.traverse((child) => {
+                    if (child.isMesh) {
+                        const childIntersections = ray.intersectObject(child, true);
+                        if (childIntersections.length > 0) {
+                            intersections.push(...childIntersections);
+                        }
+                    }
+                });
             }
 
-            requestAnimationFrame(() => updateTeleportationTarget(controller));
-        }
-
-        function onSelectStart(event) {
-            isTriggerPressed = true;
-            updateTeleportationTarget(event.target);
-        }
-
-        function onSelectEnd() {
-            isTriggerPressed = false;
-            if (teleportationTarget) {
-                cameraRig.position.set(teleportationTarget.x, cameraRig.position.y, teleportationTarget.z);
-            }
-            teleportationMarker.visible = false;
-            debugLine.visible = false;
+            return intersections;
         }
 
         const controllerModelFactory = new XRControllerModelFactory();
@@ -180,12 +353,48 @@
                 grip2.add(controllerModelFactory.createControllerModel(grip2));
                 cameraRig.add(grip2);
             }
+
+            renderer.xr.getSession().requestReferenceSpace('local-floor').then((refSpace) => {
+                xrImmersiveRefSpaceBase = refSpace;
+            }).catch((error) => {
+                console.error("Failed to request reference space:", error);
+            });
         }
 
-        renderer.xr.addEventListener("sessionstart", setupXRControllers);
+        renderer.xr.addEventListener("sessionstart", () => {
+            console.log("VR session started");
+            setupXRControllers();
+        });
 
+        renderer.xr.addEventListener("sessionend", () => {
+            console.log("VR session ended");
+        });
+
+        // Animazione
         function animate() {
             renderer.setAnimationLoop(() => {
+                if (isMoving && !renderer.xr.isPresenting) {
+                    camera.position.lerp(targetPosition, 0.1);
+                    if (camera.position.distanceTo(targetPosition) < 0.1) {
+                        isMoving = false;
+                    }
+                }
+
+                // Aggiorna la linea rossa se il trigger è premuto
+                if (isTriggerPressed && debugLine.userData.controller) {
+                    const controller = debugLine.userData.controller;
+                    const intersections = getIntersections(controller);
+
+                    if (intersections.length > 0) {
+                        const point = intersections[0].point;
+                        debugLine.geometry.setFromPoints([
+                            new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld),
+                            point
+                        ]);
+                        debugLine.userData.targetPoint = point;
+                    }
+                }
+
                 renderer.render(scene, camera);
             });
         }
