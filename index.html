@@ -198,17 +198,17 @@
         cameraRig.add(camera); // Aggiungi la telecamera al cameraRig
         scene.add(cameraRig); // Aggiungi il cameraRig alla scena
 
-        // FASCIO TELEPORT
+        // Teleportation VR
         let teleportationTarget = null;
         let teleportationMarker = null;
         const debugLine = new THREE.Line(
             new THREE.BufferGeometry(),
             new THREE.LineBasicMaterial({ color: 0xff0000 })
         );
+        
         cameraRig.add(debugLine);
         debugLine.visible = false;
 
-        // CERCHIO TELEPORT
         function createTeleportationMarker() {
             const geometry = new THREE.RingGeometry(0.1, 0.2, 32);
             const material = new THREE.MeshBasicMaterial({ color: 0x00ff00, side: THREE.DoubleSide });
@@ -219,98 +219,46 @@
             return ring;
         }
 
-        function calculateParabolicPath(controller, segments = 20, gravity = -9.8, initialVelocity = 5) {
-            const points = [];
-            const start = new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld);
-            const direction = new THREE.Vector3(0, 0, -1).applyQuaternion(controller.quaternion);
-            direction.normalize().multiplyScalar(initialVelocity);
+        teleportationMarker = createTeleportationMarker();
 
-            let position = start.clone();
-            let velocity = direction.clone();
-            let deltaT = 0.05; // Tempo simulato per ogni segmento
+        function updateDebugLine(controller) {
+            if (!teleportationTarget) return;
 
-            for (let i = 0; i < segments; i++) {
-                velocity.y += gravity * deltaT;  // Applica gravità
-                position.add(velocity.clone().multiplyScalar(deltaT));
-                points.push(position.clone());
+            const controllerPosition = new THREE.Vector3();
+            controller.getWorldPosition(controllerPosition); // Ottieni posizione aggiornata
 
-                // Verifica se la traiettoria colpisce il pavimento
-                raycaster.set(position, velocity.clone().normalize());
-                const intersects = raycaster.intersectObject(floorMesh, true);
-                if (intersects.length > 0) {
-                    teleportationTarget = intersects[0].point;
-                    teleportationMarker.position.copy(teleportationTarget);
-                    teleportationMarker.visible = true;
-                    break;
-                }
-            }
-            return points;
+            const points = [controllerPosition, teleportationTarget];
+            debugLine.geometry.dispose();
+            debugLine.geometry = new THREE.BufferGeometry().setFromPoints(points);
+            debugLine.visible = true;
         }
 
 
-        teleportationMarker = createTeleportationMarker();
 
-        // Variabile per tenere traccia dello stato del trigger
-        let isTriggerPressed = false;
-
-        // START
         function onSelectStart(event) {
             if (!renderer.xr.isPresenting) return;
 
             const controller = event.target;
-            isTriggerPressed = true;
+            const intersections = getIntersections(controller);
 
-            function updateTeleportationTarget() {
-                if (!isTriggerPressed) return;
+            if (intersections.length > 0) {
+                teleportationTarget = intersections[0].point;
+                teleportationMarker.position.copy(teleportationTarget);
+                teleportationMarker.visible = true;
 
-                const points = calculateParabolicPath(controller);
-
-                if (points.length > 0) {
-                    debugLine.geometry.setFromPoints(points);
-                    debugLine.visible = true;
-                } else {
-                    debugLine.visible = false;
-                    teleportationMarker.visible = false;
-                }
-
-                requestAnimationFrame(updateTeleportationTarget);
+                // Aggiorna la linea immediatamente
+                updateDebugLine(controller);
             }
-
-            updateTeleportationTarget();
         }
 
 
 
-        
-
-        // END
-        
-        // Modifica la funzione onSelectEnd
         function onSelectEnd(event) {
-            isTriggerPressed = false;
-
             if (teleportationTarget) {
                 if (cameraRig) {
-                    // Sposta il cameraRig (e quindi la telecamera) alla posizione di teletrasportazione
+                    // Sposta il cameraRig (e quindi la telecamera) alla posizione di teleportazione
                     cameraRig.position.set(teleportationTarget.x, cameraRig.position.y, teleportationTarget.z);
                     console.log("Camera teleported to:", teleportationTarget);
-
-                    // Dopo il teletrasporto, aggiorna il debugLine per riflettere la nuova posizione del controller
-                    if (debugLine.userData.controller) {
-                        const controller = debugLine.userData.controller;
-
-                        // Ricalcola l'intersezione con il pavimento
-                        const intersections = getIntersections(controller);
-
-                        if (intersections.length > 0) {
-                            const point = intersections[0].point;
-
-                            // Aggiorna il debugLine in base alla nuova posizione globale del controller
-                            const controllerPosition = new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld);
-                            debugLine.geometry.setFromPoints([controllerPosition, point]);
-                            debugLine.userData.targetPoint = point;
-                        }
-                    }
                 } else {
                     console.warn("Camera rig not found!");
                 }
@@ -321,52 +269,26 @@
             debugLine.visible = false;
         }
 
-        // Modifica la funzione updateTeleportationTarget
-        function updateTeleportationTarget() {
-            if (!isTriggerPressed) return;
-
-            const controller = debugLine.userData.controller;
-
-            if (controller) {
-                const intersections = getIntersections(controller);
-
-                if (intersections.length > 0) {
-                    const point = intersections[0].point;
-                    teleportationTarget = point;
-                    teleportationMarker.position.copy(point);
-                    teleportationMarker.visible = true;
-
-                    // Aggiorna il debugLine in base alla posizione globale del controller
-                    const controllerPosition = new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld);
-                    debugLine.geometry.setFromPoints([controllerPosition, point]);
-
-                    debugLine.userData.targetPoint = point;
-                    debugLine.visible = true;
-
-                    console.log("Teleportation target updated to:", point);
-                } else {
-                    teleportationMarker.visible = false;
-                    debugLine.visible = false;
-                }
-            }
-
-            // Richiama la funzione al prossimo frame
-            requestAnimationFrame(updateTeleportationTarget);
-        }
 
         function getIntersections(controller) {
+            // Ottieni la posizione e la direzione del controller
             const tempMatrix = new THREE.Matrix4();
             tempMatrix.identity().extractRotation(controller.matrixWorld);
 
-            const ray = new THREE.Raycaster();
-            ray.ray.origin.setFromMatrixPosition(controller.matrixWorld);
-            ray.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+            const rayOrigin = new THREE.Vector3();
+            const rayDirection = new THREE.Vector3(0, 0, -1); // Direzione iniziale del raggio
+            controller.getWorldPosition(rayOrigin); // Ottieni la posizione mondiale del controller
+            rayDirection.applyMatrix4(tempMatrix); // Applica la rotazione del controller
 
+            // Crea un raycaster con la posizione e la direzione corrette
+            const raycaster = new THREE.Raycaster(rayOrigin, rayDirection);
+
+            // Calcola le intersezioni con il pavimento
             const intersections = [];
             if (floorMesh) {
                 floorMesh.traverse((child) => {
                     if (child.isMesh) {
-                        const childIntersections = ray.intersectObject(child, true);
+                        const childIntersections = raycaster.intersectObject(child, true);
                         if (childIntersections.length > 0) {
                             intersections.push(...childIntersections);
                         }
@@ -427,6 +349,12 @@
                     if (camera.position.distanceTo(targetPosition) < 0.1) {
                         isMoving = false;
                     }
+                }
+
+                // Aggiorna la linea rossa mentre il trigger è premuto
+                if (teleportationTarget) {
+                    if (controller1) updateDebugLine(controller1);
+                    if (controller2) updateDebugLine(controller2);
                 }
 
                 renderer.render(scene, camera);
