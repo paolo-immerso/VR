@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="it">
 <head>
@@ -26,6 +27,9 @@
         import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
         import { VRButton } from "three/examples/jsm/webxr/VRButton";
         import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerModelFactory";
+
+        // Dichiarazione della variabile xrImmersiveRefSpaceBase
+        let xrImmersiveRefSpaceBase = null;
 
         const scene = new THREE.Scene();
         const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -198,114 +202,43 @@
         cameraRig.add(camera); // Aggiungi la telecamera al cameraRig
         scene.add(cameraRig); // Aggiungi il cameraRig alla scena
 
-        // FASCIO TELEPORT
-        let teleportationTarget = null;
-        let teleportationMarker = null;
-        const debugLine = new THREE.Line(
-            new THREE.BufferGeometry(),
-            new THREE.LineBasicMaterial({ color: 0x00ff00 })
-        );
-        cameraRig.add(debugLine);
-        debugLine.visible = false;
+    // FASCIO TELEPORT
+    let teleportationTarget = null;
+    let teleportationMarker = null;
+    const debugLine = new THREE.Line(
+        new THREE.BufferGeometry(),
+        new THREE.LineBasicMaterial({ color: 0xff0000 })
+    );
+    scene.add(debugLine);
+    debugLine.visible = false;
+    
+    // CERCHIO TELEPORT
+    function createTeleportationMarker() {
+        const geometry = new THREE.RingGeometry(0.1, 0.2, 32);
+        const material = new THREE.MeshBasicMaterial({ color: 0x00ff00, side: THREE.DoubleSide });
+        const ring = new THREE.Mesh(geometry, material);
+        ring.rotation.x = -Math.PI / 2;
+        ring.visible = false;
+        scene.add(ring);
+        return ring;
+    }
 
-        // CERCHIO TELEPORT
-        function createTeleportationMarker() {
-            const geometry = new THREE.RingGeometry(0.1, 0.2, 32);
-            const material = new THREE.MeshBasicMaterial({ color: 0x00ff00, side: THREE.DoubleSide });
-            const ring = new THREE.Mesh(geometry, material);
-            ring.rotation.x = -Math.PI / 2;
-            ring.visible = false;
-            scene.add(ring);
-            return ring;
-        }
+    teleportationMarker = createTeleportationMarker();
 
-        teleportationMarker = createTeleportationMarker();
+    // Variabile per tenere traccia dello stato del trigger
+    let isTriggerPressed = false;
 
-        // Variabile per tenere traccia dello stato del trigger
-        let isTriggerPressed = false;
+    // START
+    function onSelectStart(event) {
+        if (!renderer.xr.isPresenting) return;
 
-        // START
-        function onSelectStart(event) {
-            if (!renderer.xr.isPresenting) return;
+        const controller = event.target;
+        isTriggerPressed = true;
 
-            const controller = event.target;
-            isTriggerPressed = true;
+        // Aggiorna l'indicatore di teletrasporto ogni frame
+        function updateTeleportationTarget() {
+            if (!isTriggerPressed) return;
 
-            // Aggiorna l'indicatore di teletrasporto ogni frame
-            function updateTeleportationTarget() {
-                if (!isTriggerPressed) return;
-
-                const intersections = getIntersections(controller);
-
-                if (intersections.length > 0) {
-                    const point = intersections[0].point;
-                    teleportationTarget = point;
-                    teleportationMarker.position.copy(point);
-                    teleportationMarker.visible = true;
-
-                    // Aggiorna la posizione del fascio per partire sempre dal controller
-                    debugLine.geometry.setFromPoints([
-                        new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld),
-                        point
-                    ]);
-
-                    debugLine.userData.controller = controller;
-                    debugLine.userData.targetPoint = point;
-                    debugLine.visible = true;
-
-                    console.log("Teleportation target updated to:", point);
-                } else {
-                    teleportationMarker.visible = false;
-                    debugLine.visible = false;
-                }
-
-                // Richiama la funzione al prossimo frame
-                requestAnimationFrame(updateTeleportationTarget);
-            }
-
-            // Avvia l'aggiornamento dell'indicatore
-            updateTeleportationTarget();
-        }
-
-
-        
-
-        // END
-        // Modifica la funzione onSelectEnd
-        function onSelectEnd(event) {
-            isTriggerPressed = false;
-
-            if (teleportationTarget) {
-                if (cameraRig) {
-                    // Sposta il cameraRig (e quindi la telecamera) alla posizione di teletrasportazione
-                    cameraRig.position.set(teleportationTarget.x, cameraRig.position.y, teleportationTarget.z);
-                    console.log("Camera teleported to:", teleportationTarget);
-
-                    // Dopo il teletrasporto, aggiorna il debugLine per riflettere la nuova posizione del controller
-                    if (debugLine.userData.controller) {
-                        const controller = debugLine.userData.controller;
-                        const intersections = getIntersections(controller);
-
-                        if (intersections.length > 0) {
-                            const point = intersections[0].point;
-                            debugLine.geometry.setFromPoints([
-                                new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld),
-                                point
-                            ]);
-                            debugLine.userData.targetPoint = point;
-                        }
-                    }
-                } else {
-                    console.warn("Camera rig not found!");
-                }
-
-                teleportationMarker.visible = false;
-                teleportationTarget = null;
-            }
-            debugLine.visible = false;
-        }
-
-        function getIntersections(controller) {
             const tempMatrix = new THREE.Matrix4();
             tempMatrix.identity().extractRotation(controller.matrixWorld);
 
@@ -325,52 +258,164 @@
                 });
             }
 
-            return intersections;
+            if (intersections.length > 0) {
+                const point = intersections[0].point;
+                teleportationTarget = point;
+                teleportationMarker.position.copy(point);
+                teleportationMarker.visible = true;
+
+                // Reset the debug line geometry
+                debugLine.geometry.dispose();
+                debugLine.geometry = new THREE.BufferGeometry();
+
+                // Aggiorna la posizione del fascio per partire sempre dal controller
+                debugLine.geometry.setFromPoints([
+                    new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld),
+                    point
+                ]);
+
+                debugLine.userData.controller = controller;
+                debugLine.userData.targetPoint = point;
+                debugLine.visible = true;
+
+                console.log("Teleportation target updated to:", point);
+            } else {
+                teleportationMarker.visible = false;
+                debugLine.visible = false;
+            }
+
+            // Richiama la funzione al prossimo frame
+            requestAnimationFrame(updateTeleportationTarget);
         }
 
-        const controllerModelFactory = new XRControllerModelFactory();
-        let controller1, controller2;
+        // Avvia l'aggiornamento dell'indicatore
+        updateTeleportationTarget();
+    }
 
-        function setupXRControllers() {
-            controller1 = renderer.xr.getController(0);
-            if (controller1) {
-                controller1.addEventListener("selectstart", onSelectStart);
-                controller1.addEventListener("selectend", onSelectEnd);
-                cameraRig.add(controller1);
 
-                const grip1 = renderer.xr.getControllerGrip(0);
-                grip1.add(controllerModelFactory.createControllerModel(grip1));
-                cameraRig.add(grip1);
+    // END
+    function onSelectEnd(event) {
+        isTriggerPressed = false;
+
+        if (teleportationTarget) {
+            if (cameraRig) {
+                // Sposta il cameraRig (e quindi la telecamera) alla posizione di teletrasportazione
+                cameraRig.position.set(teleportationTarget.x, cameraRig.position.y, teleportationTarget.z);
+                console.log("Camera teleported to:", teleportationTarget);
+
+                // Resetta il fascio
+                debugLine.geometry.dispose();
+                debugLine.geometry = new THREE.BufferGeometry();
+                debugLine.visible = false;
+            } else {
+                console.warn("Camera rig not found!");
             }
 
-            controller2 = renderer.xr.getController(1);
-            if (controller2) {
-                controller2.addEventListener("selectstart", onSelectStart);
-                controller2.addEventListener("selectend", onSelectEnd);
-                cameraRig.add(controller2);
+            teleportationMarker.visible = false;
+            teleportationTarget = null;
+        }
+        debugLine.visible = false;
+    }
 
-                const grip2 = renderer.xr.getControllerGrip(1);
-                grip2.add(controllerModelFactory.createControllerModel(grip2));
-                cameraRig.add(grip2);
-            }
+    function getIntersections(controller) {
+        const tempMatrix = new THREE.Matrix4();
+        tempMatrix.identity().extractRotation(controller.matrixWorld);
 
-            renderer.xr.getSession().requestReferenceSpace('local-floor').then((refSpace) => {
-                xrImmersiveRefSpaceBase = refSpace;
-            }).catch((error) => {
-                console.error("Failed to request reference space:", error);
+        const ray = new THREE.Raycaster();
+        ray.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+        ray.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+
+        const intersections = [];
+        if (floorMesh) {
+            floorMesh.traverse((child) => {
+                if (child.isMesh) {
+                    const childIntersections = ray.intersectObject(child, true);
+                    if (childIntersections.length > 0) {
+                        intersections.push(...childIntersections);
+                    }
+                }
             });
         }
 
-        renderer.xr.addEventListener("sessionstart", () => {
-            console.log("VR session started");
-            setupXRControllers();
-        });
+        return intersections;
+    }
 
-        renderer.xr.addEventListener("sessionend", () => {
-            console.log("VR session ended");
-        });
+    const controllerModelFactory = new XRControllerModelFactory();
+    let controller1, controller2;
 
-        // Animazione
+    function setupXRControllers() {
+        controller1 = renderer.xr.getController(0);
+        if (controller1) {
+            controller1.addEventListener("selectstart", onSelectStart);
+            controller1.addEventListener("selectend", onSelectEnd);
+            cameraRig.add(controller1);
+
+            const grip1 = renderer.xr.getControllerGrip(0);
+            grip1.add(controllerModelFactory.createControllerModel(grip1));
+            cameraRig.add(grip1);
+        }
+
+        controller2 = renderer.xr.getController(1);
+        if (controller2) {
+            controller2.addEventListener("selectstart", onSelectStart);
+            controller2.addEventListener("selectend", onSelectEnd);
+            cameraRig.add(controller2);
+
+            const grip2 = renderer.xr.getControllerGrip(1);
+            grip2.add(controllerModelFactory.createControllerModel(grip2));
+            cameraRig.add(grip2);
+        }
+
+        renderer.xr.getSession().requestReferenceSpace('local-floor').then((refSpace) => {
+            xrImmersiveRefSpaceBase = refSpace;
+        }).catch((error) => {
+            console.error("Failed to request reference space:", error);
+        });
+    }
+
+    renderer.xr.addEventListener("sessionstart", () => {
+        console.log("VR session started");
+        setupXRControllers();
+    });
+
+    renderer.xr.addEventListener("sessionend", () => {
+        console.log("VR session ended");
+    });
+        
+
+        // Funzione per calcolare i punti lungo una parabola
+        function calculateParabolaPoints(start, end, height = 1, segments = 20) {
+            const points = [];
+            for (let i = 0; i <= segments; i++) {
+                const t = i / segments;
+                const x = start.x + (end.x - start.x) * t;
+                const z = start.z + (end.z - start.z) * t;
+                const y = start.y + (end.y - start.y) * t + height * Math.sin(Math.PI * t);
+                points.push(new THREE.Vector3(x, y, z));
+            }
+            return points;
+        }
+
+        // Aggiorna la debug line per seguire una parabola
+        function updateDebugLine() {
+            if (isTriggerPressed && debugLine.userData.controller && teleportationMarker.visible) {
+                const controller = debugLine.userData.controller;
+                const startPoint = new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld); // Punto di partenza: controller
+                const endPoint = teleportationMarker.position; // Punto di arrivo: centro del cerchio verde
+
+                // Calcola i punti lungo la parabola
+                const parabolaPoints = calculateParabolaPoints(startPoint, endPoint);
+
+                // Aggiorna la geometria della debug line
+                debugLine.geometry.dispose();
+                debugLine.geometry = new THREE.BufferGeometry().setFromPoints(parabolaPoints);
+                debugLine.visible = true;
+            } else {
+                debugLine.visible = false;
+            }
+        }
+
+        // Nel loop di animazione
         function animate() {
             renderer.setAnimationLoop(() => {
                 if (isMoving && !renderer.xr.isPresenting) {
@@ -380,20 +425,7 @@
                     }
                 }
 
-                // Aggiorna la linea rossa se il trigger è premuto
-                if (isTriggerPressed && debugLine.userData.controller) {
-                    const controller = debugLine.userData.controller;
-                    const intersections = getIntersections(controller);
-
-                    if (intersections.length > 0) {
-                        const point = intersections[0].point;
-                        debugLine.geometry.setFromPoints([
-                            new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld),
-                            point
-                        ]);
-                        debugLine.userData.targetPoint = point;
-                    }
-                }
+                updateDebugLine(); // Aggiorna la parabola
 
                 renderer.render(scene, camera);
             });
