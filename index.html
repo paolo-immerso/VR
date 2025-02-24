@@ -93,31 +93,62 @@
             }
         }
 
+
         function onMouseMove(event) {
-            if (!mousePressed || renderer.xr.isPresenting) return;
+            if (renderer.xr.isPresenting) return;
 
-            const deltaX = event.clientX - previousMousePosition.x;
-            const deltaY = event.clientY - previousMousePosition.y;
+            if (mousePressed) {
+                const deltaX = event.clientX - previousMousePosition.x;
+                const deltaY = event.clientY - previousMousePosition.y;
 
-            if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) isDragging = true;
+                // Se il mouse si muove abbastanza, lo consideriamo "dragging"
+                if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) {
+                    isDragging = true;
+                }
 
-            if (isDragging) {
-                yaw -= deltaX * 0.002;
-                pitch -= deltaY * 0.002;
-                pitch = Math.max(-Math.PI / 4, Math.min(Math.PI / 4, pitch));
-                camera.quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, "YXZ"));
+                if (isDragging) {
+                    // Gira la telecamera (senza muovere il personaggio)
+                    yaw -= deltaX * 0.002;
+                    pitch -= deltaY * 0.002;
+                    pitch = Math.max(-Math.PI / 4, Math.min(Math.PI / 4, pitch));
+                    camera.quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, "YXZ"));
+                }
+
+                previousMousePosition.x = event.clientX;
+                previousMousePosition.y = event.clientY;
+            } else {
+                // Se il mouse non è premuto, aggiorniamo il cerchio
+                mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+                mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+                raycaster.setFromCamera(mouse, camera);
+                const intersects = raycaster.intersectObject(floorMesh, true);
+
+                if (intersects.length > 0) {
+                    const point = intersects[0].point;
+                    selectionMarker.position.set(point.x, 0.01, point.z);
+                    selectionMarker.visible = true;
+                } else {
+                    selectionMarker.visible = false;
+                }
             }
-
-            previousMousePosition.x = event.clientX;
-            previousMousePosition.y = event.clientY;
         }
+
+
 
         function onMouseUp(event) {
             if (event.button === 0 && !renderer.xr.isPresenting) {
                 mousePressed = false;
-                if (!isDragging) moveToClick(event);
+
+                if (!isDragging && selectionMarker.visible) {
+                    // Solo se non hai trascinato e hai cliccato, allora muoviti
+                    targetPosition.set(selectionMarker.position.x, camera.position.y, selectionMarker.position.z);
+                    isMoving = true;
+                }
             }
         }
+
+
 
         function onTouchStart(event) {
             if (event.touches.length === 1 && !renderer.xr.isPresenting) {
@@ -166,11 +197,17 @@
 
             if (intersects.length > 0) {
                 const point = intersects[0].point;
+                selectionMarker.position.copy(point).add(new THREE.Vector3(0, 0.01, 0));
+                selectionMarker.visible = true;
+
                 const moveDirection = new THREE.Vector3().subVectors(point, camera.position).setY(0).normalize();
                 targetPosition.copy(camera.position).addScaledVector(moveDirection, camera.position.distanceTo(point));
                 isMoving = true;
             }
         }
+
+
+        
 
         window.addEventListener("mousedown", onMouseDown);
         window.addEventListener("mousemove", onMouseMove);
@@ -192,6 +229,24 @@
 
         let teleportationTarget = null;
         let teleportationMarker = null;
+
+        let selectionMarker = null;
+
+        function createSelectionMarker() {
+            const geometry = new THREE.RingGeometry(0.1, 0.2, 32);
+            const material = new THREE.MeshBasicMaterial({ color: 0x00ffff, side: THREE.DoubleSide });
+            const ring = new THREE.Mesh(geometry, material);
+            ring.rotation.x = -Math.PI / 2;
+            ring.visible = false;
+            scene.add(ring);
+            return ring;
+        }
+
+        selectionMarker = createSelectionMarker();
+
+
+
+
 
         // Creazione della debug line con materiale tratteggiato e glow
         const lineMaterial = new THREE.LineDashedMaterial({
